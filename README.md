@@ -4,9 +4,21 @@ This repository contains the **official implementation** of **GRD-Net**, a deep 
 
 ## Model Architecture
 
-1. **Generative Block**: This block is based on a **Generative Adversarial Network (GAN)** with a **residual autoencoder (ResAE)** architecture. The purpose of this component is to perform image reconstruction and denoising, generating clean versions of potentially defective images for further analysis.
+1. **Generative Block**: This block is based on a **Generative Adversarial Network (GAN)** with a **residual autoencoder (ResAE)** architecture. The purpose of this component is to perform image reconstruction and denoising, generating clean versions of potentially defective images for further analysis. The residual autoencoder minimizes the reconstruction error \( L_{\text{recon}} \) defined as:
+
+   \[
+   L_{\text{recon}} = \sum_{i=1}^{N} \left\| X_i - \hat{X}_i \right\|_2^2
+   \]
    
-2. **Discriminative Block**: This block is responsible for **defect localization** and anomaly detection. It analyzes the reconstructed images to spot defects, specifically focusing on predefined **Regions of Interest (ROIs)** where anomalies are likely to occur. The attention mechanism helps the network focus on the relevant areas of the image, reducing the computational cost and improving the precision of defect detection.
+   where \( X_i \) is the input image and \( \hat{X}_i \) is the reconstructed image from the autoencoder.
+
+2. **Discriminative Block**: This block is responsible for **defect localization** and anomaly detection. It analyzes the reconstructed images to spot defects, specifically focusing on predefined **Regions of Interest (ROIs)** where anomalies are likely to occur. The attention mechanism helps the network focus on the relevant areas of the image, and the anomaly detection is formulated as:
+
+   \[
+   L_{\text{anomaly}} = \sum_{i=1}^{N} \left( y_i \cdot \log p(y_i) + (1 - y_i) \cdot \log(1 - p(y_i)) \right)
+   \]
+   
+   where \( y_i \) is the ground truth anomaly label and \( p(y_i) \) is the predicted probability of detecting an anomaly.
 
 ## Key Features
 
