@@ -8,7 +8,8 @@ from typing import Generator
 import tensorflow as tf
 import numpy as np
 from PIL import Image
-from src import data
+from src.data.load_data import image_dataset_from_directory
+from src.loss.loss import huber_loss, mse_loss, mae_loss
 
 # Configure logging to debug level
 logging.basicConfig(level=logging.DEBUG)
@@ -80,7 +81,7 @@ def test_create_dataset(create_tmp_dataset: str) -> None:
     assert os.path.exists(os.path.join(tmp_dir, "mask", "bad", "1_mask.png"))
 
     # Call the externally defined image_dataset_from_directory function from 'data'
-    _, dataset = data.image_dataset_from_directory(
+    _, dataset = image_dataset_from_directory(
         directory=os.path.join(tmp_dir, 'test'),  # Point to the test directory
         color_mode='rgb',  # Load images in RGB mode
         batch_size=1,  # Process one image per batch
@@ -122,3 +123,80 @@ def test_create_dataset(create_tmp_dataset: str) -> None:
             assert np.all(mask.numpy() == 255), (
                 f"Expected all pixels in the mask to be 255 for 'bad' class, got {np.unique(mask.numpy())}"
             )
+
+def test_huber_loss_mean():
+    y_true = tf.constant([1.0, 2.0, 3.0, 4.0])
+    y_pred = tf.constant([1.5, 2.5, 2.8, 3.5])
+    delta = 1.0
+
+    # Custom Huber loss with 'mean' reduction
+    custom_loss = huber_loss(y_true, y_pred, delta=delta, reduction='mean')
+
+    # TensorFlow's built-in Huber loss with 'mean' reduction
+    tf_loss = tf.reduce_mean(tf.keras.losses.Huber(delta=delta, reduction='none')(y_true, y_pred))
+
+    assert tf.abs(custom_loss - tf_loss).numpy() < 1e-6
+
+def test_huber_loss_sum():
+    y_true = tf.constant([1.0, 2.0, 3.0, 4.0])
+    y_pred = tf.constant([1.5, 2.5, 2.8, 3.5])
+    delta = 1.0
+
+    # Custom Huber loss with 'sum' reduction
+    custom_loss = huber_loss(y_true, y_pred, delta=delta, reduction='sum')
+
+    # TensorFlow's built-in Huber loss with 'sum' reduction (manual sum)
+    tf_loss = tf.reduce_sum(tf.keras.losses.Huber(delta=delta, reduction='none')(y_true, y_pred))
+
+    # Debug prints
+    logger.warning(f"Custom loss: {custom_loss.numpy()}, TF loss: {tf_loss.numpy()}")
+
+    assert tf.abs(custom_loss - tf_loss).numpy() < 1e-6
+
+def test_mse_loss_mean():
+    y_true = tf.constant([1.0, 2.0, 3.0, 4.0])
+    y_pred = tf.constant([1.5, 2.5, 2.8, 3.5])
+
+    # Custom MSE loss with 'mean' reduction
+    custom_loss = mse_loss(y_true, y_pred, reduction='mean')
+
+    # TensorFlow's built-in MSE loss with 'mean' reduction
+    tf_loss = tf.reduce_mean(tf.keras.losses.MeanSquaredError(reduction='none')(y_true, y_pred))
+
+    assert tf.abs(custom_loss - tf_loss).numpy() < 1e-6
+
+def test_mse_loss_sum():
+    y_true = tf.constant([1.0, 2.0, 3.0, 4.0])
+    y_pred = tf.constant([1.5, 2.5, 2.8, 3.5])
+
+    # Custom MSE loss with 'sum' reduction
+    custom_loss = mse_loss(y_true, y_pred, reduction='sum')
+
+    # TensorFlow's built-in MSE loss with 'sum' reduction (manual sum)
+    tf_loss = tf.reduce_sum(tf.keras.losses.MeanSquaredError(reduction='none')(y_true, y_pred))
+
+    assert tf.abs(custom_loss - tf_loss).numpy() < 1e-6
+
+def test_mae_loss_mean():
+    y_true = tf.constant([1.0, 2.0, 3.0, 4.0])
+    y_pred = tf.constant([1.5, 2.5, 2.8, 3.5])
+
+    # Custom MAE loss with 'mean' reduction
+    custom_loss = mae_loss(y_true, y_pred, reduction='mean')
+
+    # TensorFlow's built-in MAE loss with 'mean' reduction
+    tf_loss = tf.reduce_mean(tf.keras.losses.MeanAbsoluteError(reduction='none')(y_true, y_pred))
+
+    assert tf.abs(custom_loss - tf_loss).numpy() < 1e-6
+
+def test_mae_loss_sum():
+    y_true = tf.constant([1.0, 2.0, 3.0, 4.0])
+    y_pred = tf.constant([1.5, 2.5, 2.8, 3.5])
+
+    # Custom MAE loss with 'sum' reduction
+    custom_loss = mae_loss(y_true, y_pred, reduction='sum')
+
+    # TensorFlow's built-in MAE loss with 'sum' reduction (manual sum)
+    tf_loss = tf.reduce_sum(tf.keras.losses.MeanAbsoluteError(reduction='none')(y_true, y_pred))
+
+    assert tf.abs(custom_loss - tf_loss).numpy() < 1e-6
