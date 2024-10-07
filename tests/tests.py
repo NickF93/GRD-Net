@@ -102,9 +102,9 @@ def test_create_dataset(create_tmp_dataset: str) -> None:
 
         # Log the loaded information for each image
         logger.info(
-            'Loaded image of shape %s belonging to class %d, with label "%s", '
+            '%d) Loaded image of shape %s belonging to class %d, with label "%s", '
             'with a mask of shape %s - ID %d - path "%s"',
-            str(tuple(image.shape)), cls, label_str, str(tuple(mask.shape)), id, path_str
+            i, str(tuple(image.shape)), cls, label_str, str(tuple(mask.shape)), id, path_str
         )
         
         # Perform checks to ensure correct image and mask content based on class
