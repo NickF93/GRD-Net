@@ -8,8 +8,9 @@ from typing import Generator
 import tensorflow as tf
 import numpy as np
 from PIL import Image
-from src.data.load_data import image_dataset_from_directory
-from src.loss.loss import huber_loss, mse_loss, mae_loss, ssim_loss, bce_loss, focal_loss
+from src.data import image_dataset_from_directory
+from src.loss import huber_loss, mse_loss, mae_loss, ssim_loss, bce_loss, focal_loss
+from src.model import BottleNeckType, create_res_ae
 
 # Configure logging to debug level
 logging.basicConfig(level=logging.DEBUG)
@@ -215,3 +216,49 @@ def test_focal_loss_mean(y_true, y_pred):
     print("TensorFlow loss:", tf_loss.numpy())
 
     assert tf.abs(custom_loss - tf_loss).numpy() < 1e-6
+
+def test_drae():
+    batch_size: int = 8
+    img_size: int = 224
+    channels: int = 3
+
+    encoder_model: tf.keras.models.Model
+    autencoder_model: tf.keras.models.Model
+    generator_model: tf.keras.models.Model
+    encoder_model, autencoder_model, generator_model = create_res_ae(img_height = img_size, channels = channels, bottleneck_type = BottleNeckType.DENSE, initial_padding=10, initial_padding_filters=64)
+
+    x = tf.random.normal((batch_size, img_size, img_size, channels))
+    x = (x - tf.reduce_min(x)) / (tf.reduce_max(x) - tf.reduce_min(x))
+
+    generator_model(x)
+    autencoder_model(x)
+    encoder_model(x)
+
+    assert tuple(encoder_model.outputs[0].shape) == tuple(autencoder_model.outputs[1].shape)
+    assert (None, img_size, img_size, channels) == tuple(autencoder_model.outputs[0].shape)
+    assert tuple(encoder_model.outputs[0].shape) == tuple(generator_model.outputs[0].shape)
+    assert tuple(encoder_model.outputs[0].shape) == tuple(generator_model.outputs[2].shape)
+    assert (None, img_size, img_size, channels) == tuple(generator_model.outputs[1].shape)
+
+def test_crae():
+    batch_size: int = 8
+    img_size: int = 224
+    channels: int = 3
+
+    encoder_model: tf.keras.models.Model
+    autencoder_model: tf.keras.models.Model
+    generator_model: tf.keras.models.Model
+    encoder_model, autencoder_model, generator_model = create_res_ae(img_height = img_size, channels = channels, bottleneck_type = BottleNeckType.CONVOLUTIONAL, initial_padding=10, initial_padding_filters=64)
+
+    x = tf.random.normal((batch_size, img_size, img_size, channels))
+    x = (x - tf.reduce_min(x)) / (tf.reduce_max(x) - tf.reduce_min(x))
+
+    generator_model(x)
+    autencoder_model(x)
+    encoder_model(x)
+
+    assert tuple(encoder_model.outputs[0].shape) == tuple(autencoder_model.outputs[1].shape)
+    assert (None, img_size, img_size, channels) == tuple(autencoder_model.outputs[0].shape)
+    assert tuple(encoder_model.outputs[0].shape) == tuple(generator_model.outputs[0].shape)
+    assert tuple(encoder_model.outputs[0].shape) == tuple(generator_model.outputs[2].shape)
+    assert (None, img_size, img_size, channels) == tuple(generator_model.outputs[1].shape)
