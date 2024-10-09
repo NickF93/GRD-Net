@@ -1,6 +1,16 @@
-from typing import Optional, Tuple, Union
+"""
+This module defines a ResNet-based Autoencoder (ResnetAE) class with customizable
+encoder and decoder architectures. The class supports various activation functions,
+batch normalization, and the construction of residual blocks for both the encoder
+and decoder.
 
+The ResnetAE class offers methods to generate the encoder (`gen_encoder`) and decoder
+(`gen_decoder`), along with support for flexible residual block creation.
+"""
+
+from typing import Optional, Tuple, Union
 import tensorflow as tf
+
 
 class ResnetAE:
     """
