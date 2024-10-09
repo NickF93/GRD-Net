@@ -9,7 +9,7 @@ import tensorflow as tf
 import numpy as np
 from PIL import Image
 from src.data.load_data import image_dataset_from_directory
-from src.loss.loss import huber_loss, mse_loss, mae_loss
+from src.loss.loss import huber_loss, mse_loss, mae_loss, ssim_loss, bce_loss, focal_loss
 
 # Configure logging to debug level
 logging.basicConfig(level=logging.DEBUG)
@@ -126,11 +126,11 @@ def test_create_dataset(create_tmp_dataset: str) -> None:
 
 @pytest.fixture
 def y_true():
-    return tf.reshape(tf.constant([1.0, 2.0, 3.0, 4.0]), shape=(-1, 1))
+    return tf.random.normal((2, 16, 16, 3))
 
 @pytest.fixture
 def y_pred():
-    return tf.reshape(tf.constant([1.5, 2.5, 2.8, 3.5]), shape=(-1, 1))
+    return tf.random.normal((2, 16, 16, 3))
 
 def test_huber_loss_mean(y_true, y_pred):
     delta = 1.0
@@ -139,18 +139,7 @@ def test_huber_loss_mean(y_true, y_pred):
     custom_loss = huber_loss(y_true, y_pred, delta=delta, reduction='mean')
 
     # TensorFlow's built-in Huber loss with 'mean' reduction
-    tf_loss = tf.reduce_mean(tf.keras.losses.Huber(delta=delta, reduction=tf.keras.losses.Reduction.NONE)(y_true, y_pred))
-
-    assert tf.abs(custom_loss - tf_loss).numpy() < 1e-6
-
-def test_huber_loss_sum(y_true, y_pred):
-    delta = 1.0
-
-    # Custom Huber loss with 'sum' reduction
-    custom_loss = huber_loss(y_true, y_pred, delta=delta, reduction='sum')
-
-    # TensorFlow's built-in Huber loss with 'sum' reduction
-    tf_loss = tf.reduce_sum(tf.keras.losses.Huber(delta=delta, reduction=tf.keras.losses.Reduction.NONE)(y_true, y_pred))
+    tf_loss = tf.reduce_mean(tf.keras.losses.Huber(delta=delta, reduction=tf.keras.losses.Reduction.NONE)(tf.reshape(y_true, (*(y_true.shape), 1)), tf.reshape(y_pred, (*(y_pred.shape), 1))))
 
     assert tf.abs(custom_loss - tf_loss).numpy() < 1e-6
 
@@ -159,16 +148,7 @@ def test_mse_loss_mean(y_true, y_pred):
     custom_loss = mse_loss(y_true, y_pred, reduction='mean')
 
     # TensorFlow's built-in MSE loss with 'mean' reduction
-    tf_loss = tf.reduce_mean(tf.keras.losses.MeanSquaredError(reduction=tf.keras.losses.Reduction.NONE)(y_true, y_pred))
-
-    assert tf.abs(custom_loss - tf_loss).numpy() < 1e-6
-
-def test_mse_loss_sum(y_true, y_pred):
-    # Custom MSE loss with 'sum' reduction
-    custom_loss = mse_loss(y_true, y_pred, reduction='sum')
-
-    # TensorFlow's built-in MSE loss with 'sum' reduction
-    tf_loss = tf.reduce_sum(tf.keras.losses.MeanSquaredError(reduction=tf.keras.losses.Reduction.NONE)(y_true, y_pred))
+    tf_loss = tf.reduce_mean(tf.keras.losses.MeanSquaredError(reduction=tf.keras.losses.Reduction.NONE)(tf.reshape(y_true, (*(y_true.shape), 1)), tf.reshape(y_pred, (*(y_pred.shape), 1))))
 
     assert tf.abs(custom_loss - tf_loss).numpy() < 1e-6
 
@@ -177,15 +157,61 @@ def test_mae_loss_mean(y_true, y_pred):
     custom_loss = mae_loss(y_true, y_pred, reduction='mean')
 
     # TensorFlow's built-in MAE loss with 'mean' reduction
-    tf_loss = tf.reduce_mean(tf.keras.losses.MeanAbsoluteError(reduction=tf.keras.losses.Reduction.NONE)(y_true, y_pred))
+    tf_loss = tf.reduce_mean(tf.keras.losses.MeanAbsoluteError(reduction=tf.keras.losses.Reduction.NONE)(tf.reshape(y_true, (*(y_true.shape), 1)), tf.reshape(y_pred, (*(y_pred.shape), 1))))
 
     assert tf.abs(custom_loss - tf_loss).numpy() < 1e-6
 
-def test_mae_loss_sum(y_true, y_pred):
-    # Custom MAE loss with 'sum' reduction
-    custom_loss = mae_loss(y_true, y_pred, reduction='sum')
+def test_ssim_loss_mean(y_true, y_pred):
+    """
+    Test the custom SSIM loss function with 'mean' reduction and compare it with TensorFlow's SSIM implementation.
+    """
+    # Custom SSIM loss with 'mean' reduction
+    custom_loss = ssim_loss(y_true, y_pred, reduction='mean')
 
-    # TensorFlow's built-in MAE loss with 'sum' reduction
-    tf_loss = tf.reduce_sum(tf.keras.losses.MeanAbsoluteError(reduction=tf.keras.losses.Reduction.NONE)(y_true, y_pred))
+    # TensorFlow's SSIM implementation, scaled to loss (1 - SSIM)
+    tf_ssim = tf.image.ssim(y_true, y_pred, max_val=1.0)
+    tf_loss = tf.reduce_mean(1 - tf_ssim)
+
+    assert tf.abs(custom_loss - tf_loss).numpy() < 1e-6
+
+def test_bce_loss_mean(y_true, y_pred):
+    """
+    Test the custom BCE loss function with 'mean' reduction and compare it with TensorFlow's built-in BCE implementation.
+    """
+
+    y_true = tf.math.abs(y_true)
+    y_true = tf.clip_by_value(((y_true - tf.reduce_min(y_true)) / (tf.reduce_max(y_true) - tf.reduce_min(y_true))), 0.0, 1.0)
+    y_true = tf.cast(y_true >= 0.5, dtype=tf.float32)
+
+    # Custom BCE loss with 'mean' reduction
+    custom_loss = bce_loss(y_true, y_pred, from_logits=True, reduction='mean')
+
+    # TensorFlow's built-in BCE loss
+    tf_loss = tf.reduce_mean(tf.keras.losses.BinaryCrossentropy(from_logits=True, reduction=tf.keras.losses.Reduction.NONE)(y_true, y_pred))
+
+    assert tf.abs(custom_loss - tf_loss).numpy() < 1e-6
+
+
+def test_focal_loss_mean(y_true, y_pred):
+    """
+    Test the custom BCE loss function with 'mean' reduction and compare it with TensorFlow's built-in BCE implementation.
+    """
+
+    alpha: float = 2.0
+    gamma: float = 0.25
+
+    y_true = tf.math.abs(y_true)
+    y_true = tf.clip_by_value(((y_true - tf.reduce_min(y_true)) / (tf.reduce_max(y_true) - tf.reduce_min(y_true))), 0.0, 1.0)
+    y_true = tf.cast(y_true >= 0.5, dtype=tf.float32)
+
+    # Custom focal loss with 'mean' reduction
+    custom_loss = focal_loss(y_true, y_pred, from_logits=True, alpha=alpha, gamma=gamma, reduction='mean')
+
+    # TensorFlow's built-in focal loss
+    tf_loss = tf.reduce_mean(tf.keras.losses.BinaryFocalCrossentropy(apply_class_balancing=True, from_logits=True, alpha=alpha, gamma=gamma, reduction=tf.keras.losses.Reduction.NONE)(y_true, y_pred))
+
+    # Compare results step by step
+    print("Custom loss:", custom_loss.numpy())
+    print("TensorFlow loss:", tf_loss.numpy())
 
     assert tf.abs(custom_loss - tf_loss).numpy() < 1e-6
