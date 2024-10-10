@@ -227,6 +227,45 @@ def test_drae():
     generator_model: tf.keras.models.Model
     encoder_model, autencoder_model, generator_model = create_res_ae(img_height = img_size, channels = channels, bottleneck_type = BottleNeckType.DENSE, initial_padding=10, initial_padding_filters=64)
 
+    tf.keras.utils.plot_model(
+        encoder_model,
+        to_file="/tmp/drae_encoder_model.png",
+        show_shapes=True,
+        show_dtype=True,
+        show_layer_names=True,
+        rankdir="TB",
+        expand_nested=True,
+        dpi=200,
+        show_layer_activations=True,
+        show_trainable=True,
+    )
+
+    tf.keras.utils.plot_model(
+        autencoder_model,
+        to_file="/tmp/drae_autencoder_model.png",
+        show_shapes=True,
+        show_dtype=True,
+        show_layer_names=True,
+        rankdir="TB",
+        expand_nested=True,
+        dpi=200,
+        show_layer_activations=True,
+        show_trainable=True,
+    )
+
+    tf.keras.utils.plot_model(
+        generator_model,
+        to_file="/tmp/drae_generator_model.png",
+        show_shapes=True,
+        show_dtype=True,
+        show_layer_names=True,
+        rankdir="TB",
+        expand_nested=True,
+        dpi=200,
+        show_layer_activations=True,
+        show_trainable=True,
+    )
+
     x = tf.random.normal((batch_size, img_size, img_size, channels))
     x = (x - tf.reduce_min(x)) / (tf.reduce_max(x) - tf.reduce_min(x))
 
@@ -249,6 +288,169 @@ def test_crae():
     autencoder_model: tf.keras.models.Model
     generator_model: tf.keras.models.Model
     encoder_model, autencoder_model, generator_model = create_res_ae(img_height = img_size, channels = channels, bottleneck_type = BottleNeckType.CONVOLUTIONAL, initial_padding=10, initial_padding_filters=64)
+
+    tf.keras.utils.plot_model(
+        encoder_model,
+        to_file="/tmp/crae_encoder_model.png",
+        show_shapes=True,
+        show_dtype=True,
+        show_layer_names=True,
+        rankdir="TB",
+        expand_nested=True,
+        dpi=200,
+        show_layer_activations=True,
+        show_trainable=True,
+    )
+
+    tf.keras.utils.plot_model(
+        autencoder_model,
+        to_file="/tmp/crae_autencoder_model.png",
+        show_shapes=True,
+        show_dtype=True,
+        show_layer_names=True,
+        rankdir="TB",
+        expand_nested=True,
+        dpi=200,
+        show_layer_activations=True,
+        show_trainable=True,
+    )
+
+    tf.keras.utils.plot_model(
+        generator_model,
+        to_file="/tmp/crae_generator_model.png",
+        show_shapes=True,
+        show_dtype=True,
+        show_layer_names=True,
+        rankdir="TB",
+        expand_nested=True,
+        dpi=200,
+        show_layer_activations=True,
+        show_trainable=True,
+    )
+
+    x = tf.random.normal((batch_size, img_size, img_size, channels))
+    x = (x - tf.reduce_min(x)) / (tf.reduce_max(x) - tf.reduce_min(x))
+
+    generator_model(x)
+    autencoder_model(x)
+    encoder_model(x)
+
+    assert tuple(encoder_model.outputs[0].shape) == tuple(autencoder_model.outputs[1].shape)
+    assert (None, img_size, img_size, channels) == tuple(autencoder_model.outputs[0].shape)
+    assert tuple(encoder_model.outputs[0].shape) == tuple(generator_model.outputs[0].shape)
+    assert tuple(encoder_model.outputs[0].shape) == tuple(generator_model.outputs[2].shape)
+    assert (None, img_size, img_size, channels) == tuple(generator_model.outputs[1].shape)
+
+def test_wdrae():
+    batch_size: int = 8
+    img_size: int = 224
+    channels: int = 3
+
+    encoder_model: tf.keras.models.Model
+    autencoder_model: tf.keras.models.Model
+    generator_model: tf.keras.models.Model
+    encoder_model, autencoder_model, generator_model = create_res_ae(img_height = img_size, channels = channels, bottleneck_type = BottleNeckType.DENSE, initial_padding=10, initial_padding_filters=64, wide=2)
+
+    tf.keras.utils.plot_model(
+        encoder_model,
+        to_file="/tmp/drae_encoder_model.png",
+        show_shapes=True,
+        show_dtype=True,
+        show_layer_names=True,
+        rankdir="TB",
+        expand_nested=True,
+        dpi=200,
+        show_layer_activations=True,
+        show_trainable=True,
+    )
+
+    tf.keras.utils.plot_model(
+        autencoder_model,
+        to_file="/tmp/drae_autencoder_model.png",
+        show_shapes=True,
+        show_dtype=True,
+        show_layer_names=True,
+        rankdir="TB",
+        expand_nested=True,
+        dpi=200,
+        show_layer_activations=True,
+        show_trainable=True,
+    )
+
+    tf.keras.utils.plot_model(
+        generator_model,
+        to_file="/tmp/drae_generator_model.png",
+        show_shapes=True,
+        show_dtype=True,
+        show_layer_names=True,
+        rankdir="TB",
+        expand_nested=True,
+        dpi=200,
+        show_layer_activations=True,
+        show_trainable=True,
+    )
+
+    x = tf.random.normal((batch_size, img_size, img_size, channels))
+    x = (x - tf.reduce_min(x)) / (tf.reduce_max(x) - tf.reduce_min(x))
+
+    generator_model(x)
+    autencoder_model(x)
+    encoder_model(x)
+
+    assert tuple(encoder_model.outputs[0].shape) == tuple(autencoder_model.outputs[1].shape)
+    assert (None, img_size, img_size, channels) == tuple(autencoder_model.outputs[0].shape)
+    assert tuple(encoder_model.outputs[0].shape) == tuple(generator_model.outputs[0].shape)
+    assert tuple(encoder_model.outputs[0].shape) == tuple(generator_model.outputs[2].shape)
+    assert (None, img_size, img_size, channels) == tuple(generator_model.outputs[1].shape)
+
+def test_wcrae():
+    batch_size: int = 8
+    img_size: int = 224
+    channels: int = 3
+
+    encoder_model: tf.keras.models.Model
+    autencoder_model: tf.keras.models.Model
+    generator_model: tf.keras.models.Model
+    encoder_model, autencoder_model, generator_model = create_res_ae(img_height = img_size, channels = channels, bottleneck_type = BottleNeckType.CONVOLUTIONAL, initial_padding=10, initial_padding_filters=64, wide=2)
+
+    tf.keras.utils.plot_model(
+        encoder_model,
+        to_file="/tmp/crae_encoder_model.png",
+        show_shapes=True,
+        show_dtype=True,
+        show_layer_names=True,
+        rankdir="TB",
+        expand_nested=True,
+        dpi=200,
+        show_layer_activations=True,
+        show_trainable=True,
+    )
+
+    tf.keras.utils.plot_model(
+        autencoder_model,
+        to_file="/tmp/crae_autencoder_model.png",
+        show_shapes=True,
+        show_dtype=True,
+        show_layer_names=True,
+        rankdir="TB",
+        expand_nested=True,
+        dpi=200,
+        show_layer_activations=True,
+        show_trainable=True,
+    )
+
+    tf.keras.utils.plot_model(
+        generator_model,
+        to_file="/tmp/crae_generator_model.png",
+        show_shapes=True,
+        show_dtype=True,
+        show_layer_names=True,
+        rankdir="TB",
+        expand_nested=True,
+        dpi=200,
+        show_layer_activations=True,
+        show_trainable=True,
+    )
 
     x = tf.random.normal((batch_size, img_size, img_size, channels))
     x = (x - tf.reduce_min(x)) / (tf.reduce_max(x) - tf.reduce_min(x))

@@ -5,7 +5,8 @@ batch normalization, and the construction of residual blocks for both the encode
 and decoder.
 
 The ResnetAE class offers methods to generate the encoder (`gen_encoder`) and decoder
-(`gen_decoder`), along with support for flexible residual block creation.
+(`gen_decoder`), along with support for flexible residual block creation, including
+the option to use a wide residual network.
 """
 
 from typing import Optional, Tuple, Union
@@ -27,7 +28,7 @@ class ResnetAE:
     _bias : bool
         Whether to use biases in the convolutional layers.
     _bn : bool
-        Whether to apply batch normalization.
+        Whether to apply batch normalization across all layers.
     _flbn : bool
         Whether to apply batch normalization on the first and last layers.
     _iks : int
@@ -315,7 +316,8 @@ class ResnetAE:
     def gen_encoder(
         self,
         inputs: tf.Tensor,
-        name: Union[str, int]
+        name: Union[str, int],
+        wide: int = 1
     ) -> Tuple[tf.keras.models.Model, tf.Tensor, tf.Tensor]:
         """
         Generates the encoder part of the ResNet-based autoencoder.
@@ -326,6 +328,8 @@ class ResnetAE:
             Input tensor to the encoder.
         name : Union[str, int]
             Name or identifier for the encoder.
+        wide : int
+            Wide factor.
 
         Returns:
         --------
@@ -334,6 +338,8 @@ class ResnetAE:
         """
         name = str(self.name + '_' + str(name))
         
+        assert wide > 0, '`wide` factor must be greater that 0'
+
         # Initial input layer
         filters = self._if
         x = inputs
@@ -362,7 +368,7 @@ class ResnetAE:
                     # No downsampling for the first block in the first stage
                     x = self._res_block(
                         inputs=x,
-                        filters=f,
+                        filters=int(f * wide),
                         stage=stage,
                         block=block,
                         strides=1,
@@ -376,7 +382,7 @@ class ResnetAE:
                     # Downsampling for the first block of subsequent stages
                     x = self._res_block(
                         inputs=x,
-                        filters=f,
+                        filters=int(f * wide),
                         stage=stage,
                         block=block,
                         strides=2,
@@ -390,7 +396,7 @@ class ResnetAE:
                     # Regular blocks with no downsampling
                     x = self._res_block(
                         inputs=x,
-                        filters=f,
+                        filters=int(f * wide),
                         stage=stage,
                         block=block,
                         strides=1,
@@ -408,7 +414,8 @@ class ResnetAE:
         self,
         inputs: tf.Tensor,
         last_act: bool,
-        name: Union[str, int]
+        name: Union[str, int],
+        wide: int = 1
     ) -> Tuple[tf.keras.models.Model, tf.Tensor, tf.Tensor]:
         """
         Generates the decoder part of the ResNet-based autoencoder.
@@ -421,6 +428,8 @@ class ResnetAE:
             Whether to apply the last activation function.
         name : Union[str, int]
             Name or identifier for the decoder.
+        wide : int
+            Wide factor.
 
         Returns:
         --------
@@ -428,6 +437,8 @@ class ResnetAE:
             A tuple containing the decoder model, the input tensor, and the output tensor.
         """
         name = str(self.name + '_' + str(name))
+        
+        assert wide > 0, '`wide` factor must be greater that 0'
         
         filters = self._if
         x = inputs
@@ -443,7 +454,7 @@ class ResnetAE:
                     # Final block of the decoder
                     x = self._res_block(
                         inputs=x,
-                        filters=f,
+                        filters=int(f * wide),
                         stage=stage,
                         block=block,
                         strides=1,
@@ -457,7 +468,7 @@ class ResnetAE:
                     # Last block of each stage (with downsampling)
                     x = self._res_block(
                         inputs=x,
-                        filters=f,
+                        filters=int(f * wide),
                         stage=stage,
                         block=block,
                         strides=2,
@@ -471,7 +482,7 @@ class ResnetAE:
                     # Regular blocks with no downsampling
                     x = self._res_block(
                         inputs=x,
-                        filters=f,
+                        filters=int(f * wide),
                         stage=stage,
                         block=block,
                         strides=1,
