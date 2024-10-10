@@ -184,6 +184,60 @@ def ssim_loss(
 
 
 @tf.function(reduce_retracing=True)
+def ssim_rgb_loss(
+    y_true: tf.Tensor,
+    y_pred: tf.Tensor,
+    max_val: float = 1.0,
+    reduction: str = 'mean',
+    axis: Optional[Union[int, list, tuple]] = None
+) -> tf.Tensor:
+    """
+    Compute the SSIM loss separately for each channel (R, G, B), and average the result across channels.
+
+    Parameters:
+    - y_true (tf.Tensor): Ground truth images with shape [batch_size, height, width, 3] (RGB channels).
+    - y_pred (tf.Tensor): Predicted images with shape [batch_size, height, width, 3].
+    - max_val (float): Maximum possible value for input images (e.g., 1.0 for normalized images).
+    - reduction (str): Specifies the reduction to apply to the SSIM loss: 'none', 'sum', or 'mean'. Default is 'mean'.
+    - axis (Optional[Union[int, list, tuple]]): The dimensions to reduce. Default is None, which reduces all dimensions.
+
+    Returns:
+    - tf.Tensor: The computed SSIM loss, reduced according to the specified reduction type.
+    """
+    # Ensure that y_true and y_pred have the same shape and 3 channels (RGB)
+    tf.debugging.assert_equal(
+        tf.shape(y_true), tf.shape(y_pred),
+        message="y_true and y_pred must have the same shape."
+    )
+    tf.debugging.assert_equal(
+        tf.shape(y_true)[-1], 3,
+        message="y_true and y_pred must have 3 channels (RGB)."
+    )
+
+    # Infer target shape (excluding the batch axis)
+    target_shape = tf.shape(y_true)[1:]
+    target_size = tf.reduce_prod(target_shape)
+
+    # Compute SSIM for each channel separately
+    ssim_r = tf.image.ssim(y_true[..., 0:1], y_pred[..., 0:1], max_val=max_val)
+    ssim_g = tf.image.ssim(y_true[..., 1:1], y_pred[..., 1:1], max_val=max_val)
+    ssim_b = tf.image.ssim(y_true[..., 2:1], y_pred[..., 2:1], max_val=max_val)
+
+    # Average the SSIM for each channel
+    ssim_rgb = (ssim_r + ssim_g + ssim_b) / 3.0
+
+    # Convert SSIM to a loss value (1 - SSIM)
+    loss: tf.Tensor = 1 - ssim_rgb
+
+    # If reduction is 'none', expand the SSIM result and divide by the product of the target shape
+    if reduction == 'none':
+        loss = tf.expand_dims(loss, axis=-1) / tf.cast(target_size, loss.dtype)
+
+    # Apply reduction
+    return _apply_reduction(loss, reduction=reduction, axis=axis)
+
+
+@tf.function(reduce_retracing=True)
 def bce_loss(
     y_true: tf.Tensor,
     y_pred: tf.Tensor,
@@ -240,4 +294,37 @@ def focal_loss(
     loss: tf.Tensor = weight * focal_bce
 
     # Apply the private reduction function
+    return _apply_reduction(loss, reduction=reduction, axis=axis)
+
+
+@tf.function(reduce_retracing=True)
+def cosine_similarity_loss(
+    y_true: tf.Tensor,
+    y_pred: tf.Tensor,
+    reduction: str = 'mean',
+    axis: Optional[Union[int, list, tuple]] = None
+) -> tf.Tensor:
+    """
+    Compute the cosine similarity loss between true and predicted vectors.
+
+    Parameters:
+    - y_true (tf.Tensor): Ground truth vectors.
+    - y_pred (tf.Tensor): Predicted vectors.
+    - reduction (str): Specifies the reduction to apply to the cosine similarity loss: 'none', 'sum', or 'mean'. Default is 'mean'.
+    - axis (Optional[Union[int, list, tuple]]): The dimensions to reduce. Default is None, which reduces all dimensions.
+
+    Returns:
+    - tf.Tensor: The cosine similarity loss, reduced according to the specified reduction type.
+    """
+    # Normalize the true and predicted vectors
+    y_true = tf.nn.l2_normalize(y_true, axis=-1)
+    y_pred = tf.nn.l2_normalize(y_pred, axis=-1)
+
+    # Compute cosine similarity
+    cosine_sim = tf.reduce_sum(y_true * y_pred, axis=-1)
+
+    # Cosine similarity loss is 1 - cosine similarity
+    loss: tf.Tensor = 1 - cosine_sim
+
+    # Apply reduction to the cosine similarity loss
     return _apply_reduction(loss, reduction=reduction, axis=axis)

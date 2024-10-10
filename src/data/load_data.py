@@ -219,7 +219,7 @@ def labels_to_dataset(labels, label_mode, num_classes):
                                                         num_parallel_calls=tf.data.AUTOTUNE)
     return label_ds
 
-def load_image(path, image_size, num_channels, interpolation, mask=False):
+def load_image(path, image_size, num_channels, interpolation, mask=False, mask_type='mask'):
     """Load an image from a path and resize it."""
 
     gray = False
@@ -229,7 +229,7 @@ def load_image(path, image_size, num_channels, interpolation, mask=False):
 
     if (mask):
         if (path == ''):
-            img = tf.zeros([image_size[0], image_size[1], 1])
+            img = tf.zeros([image_size[0], image_size[1], 1]) if mask_type == 'mask' else tf.ones([image_size[0], image_size[1], 1]) * 255.0
             img = tf.cast(img, dtype=tf.int32)
         else:
             img = tf.io.read_file(path)
@@ -259,6 +259,7 @@ def paths_and_labels_to_dataset(image_paths,
         interpolation,
         class_names,
         load_masks,
+        mask_type,
         mask_dir,
         mask_ext):
     """Constructs a dataset of images and labels."""
@@ -297,7 +298,7 @@ def paths_and_labels_to_dataset(image_paths,
     img_ds_tmp = path_ds.map(
             lambda x: load_image(x, *args), num_parallel_calls=tf.data.AUTOTUNE)
 
-    args = (image_size, num_channels, interpolation, True)
+    args = (image_size, num_channels, interpolation, True, mask_type)
     if (load_masks):
         mask_ds_tmp = path_masks_ds.map(
                 lambda x: load_image(x, *args), num_parallel_calls=tf.data.AUTOTUNE)
@@ -330,6 +331,7 @@ def image_dataset_from_directory(
         interpolation='bilinear',
         follow_links=False,
         load_masks=False,
+        mask_type='mask',
         mask_dir='MASK',
         mask_ext='png',
         samples=None):
@@ -506,6 +508,7 @@ def image_dataset_from_directory(
             interpolation=interpolation,
             class_names=class_names,
             load_masks=load_masks,
+            mask_type=mask_type,
             mask_dir=mask_dir,
             mask_ext=mask_ext)
     dataset = dataset.prefetch(tf.data.AUTOTUNE)
@@ -540,6 +543,7 @@ def image_dataset_from_directory(
                 interpolation=interpolation,
                 class_names=class_names,
                 load_masks=load_masks,
+                mask_type=mask_type,
                 mask_dir=mask_dir,
                 mask_ext=mask_ext)
         dataset_v = dataset_v.prefetch(tf.data.AUTOTUNE)
