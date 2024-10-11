@@ -42,7 +42,7 @@ class AugmentPipe:
                  random_90_rotation: Optional[int],
                  rotation_angle: Optional[Union[float, Tuple[float, float]]],
                  flip_mode: Optional[str],
-                 translation_range: Union[float, Tuple[float, float]],
+                 translation_range: Union[float, int, Tuple[float, float]],
                  zoom_range: Union[float, Tuple[float, float]]):
         """
         Initializes the AugmentPipe class with the desired augmentation parameters.
@@ -51,7 +51,7 @@ class AugmentPipe:
             random_90_rotation (Optional[int]): Number of 90-degree rotations to apply (0, 90, 180, or 270 degrees). None or < 1 disables the rotation.
             rotation_angle (Optional[Union[float, Tuple[float, float]]]): A single angle (float) or a range (tuple) in radians for arbitrary rotation. None disables the rotation.
             flip_mode (Optional[str]): Mode of flipping, one of ["none", "both", "vertical", "horizontal"]. None disables flipping.
-            translation_range (Union[float, Tuple[float, float]]): Translation range for both x and y axes. A single float applies the same translation in both directions; a tuple allows specifying a range for random translation.
+            translation_range (Union[float, int, Tuple[float, float]]): Translation range for both x and y axes. A single float applies the same translation in both directions; a tuple allows specifying a range for random translation.
             zoom_range (Union[float, Tuple[float, float]]): Zoom range for scaling the image. A single float applies a fixed zoom, while a tuple allows random zooming within the range.
 
         Raises:
@@ -104,8 +104,8 @@ class AugmentPipe:
             self.__translate_range = None
         else:
             self.__translate = True
-            self.__translate_range = [translation_range, translation_range] if isinstance(translation_range, float) \
-                                     else tuple(translation_range)
+            self.__translate_range = [translation_range, translation_range] if isinstance(translation_range, float) or \
+                                     isinstance(translation_range, int) else tuple(translation_range)
 
         # Configure zoom
         self.__zoom: bool

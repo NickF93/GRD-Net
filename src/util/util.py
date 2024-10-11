@@ -17,10 +17,14 @@ Usage:
     config_gpu()
 """
 
+import time
+import random
+import math
 import gc
 from typing import List, Optional
 
 import tensorflow as tf
+import numpy as np
 
 def clear_session() -> None:
     """
@@ -85,3 +89,19 @@ def config_gpu() -> None:
             # Memory growth must be set before any GPU is initialized
             # If the GPUs are already initialized, this error will be raised
             print(f"Error: {e}")
+
+def set_seed(seed=None):
+    if seed is None:
+        t = time.time()
+        a, b = math.modf(t)
+        a = float(int(a * (10 ** 7)))
+        if a == 0:
+            a = 1
+        seed = int((b / a) * 1000.)
+    else:
+        seed = int(seed)
+    random.seed(seed)
+    tf.random.set_seed(seed)
+    np.random.seed(seed)
+
+    return seed

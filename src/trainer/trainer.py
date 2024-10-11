@@ -10,6 +10,8 @@ import matplotlib.pyplot as plt
 from ..data import image_dataset_from_directory
 from ..augment import AugmentPipe
 from ..loss import mae_loss, mse_loss, huber_loss, bce_loss, focal_loss, ssim_loss, ssim_rgb_loss, cosine_similarity_loss
+from ..util import config_gpu, clear_session, set_seed
+from ..perlin import Perlin
 
 class NetType(Enum):
     GRD = 0
@@ -38,6 +40,9 @@ class Trainer:
                 translation_range: Union[float, Tuple[float, float]] = None,
                 zoom_range: Union[float, Tuple[float, float]] = [-0.1, 0.1]
             ):
+        clear_session()
+        config_gpu()
+
         self.name = str(name)
         self.net_type: NetType = net_type
         self.batch_size: int = batch_size
@@ -64,6 +69,8 @@ class Trainer:
         self.mask_path: str = os.path.realpath(mask_path)
         assert os.path.exists(self.mask_path) and os.path.isdir(self.mask_path), 'mask path must exist and must be a directory'
 
+        self.seed = set_seed()
+
         _, self.ds_training_path, _, self.ds_validation_path = image_dataset_from_directory(
                                         directory=self.train_and_validation_path,
                                         color_mode=self.get_image_type(),
@@ -71,7 +78,7 @@ class Trainer:
                                         image_size=self.target_size,
                                         shuffle=True,
                                         reshuffle=True,
-                                        seed=round(time.time() / 100.),
+                                        seed=self.seed,
                                         validation_split=self.validation_split if self.validation_split > 0 else None,
                                         subset='both' if self.validation_split > 0 else None,
                                         load_masks=True,
@@ -91,6 +98,36 @@ class Trainer:
                                         mask_type='mask',
                                         mask_dir=self.mask_path,
                                         mask_ext=self.mask_suffix)
+
+        max_size = max(self.target_size)
+        size = int((2 ** np.ceil(np.log2(max_size))).astype(np.int64) * 2)
+
+        _, self.ds_reference_dataset = image_dataset_from_directory(
+                                        directory=self.train_and_validation_path,
+                                        color_mode=self.get_image_type(),
+                                        batch_size=self.batch_size,
+                                        image_size=(size, size),
+                                        shuffle=True,
+                                        reshuffle=True,
+                                        seed=self.seed,
+                                        load_masks=True,
+                                        mask_type='mask',
+                                        mask_dir=self.train_and_validation_roi_path,
+                                        mask_ext=self.mask_suffix,
+                                        samples=None)
+
+        _, self.ds_real_defect_dataset = image_dataset_from_directory(
+                                        self.test_path,
+                                        color_mode=self.get_image_type(),
+                                        batch_size=self.batch_size,
+                                        image_size=(size, size),
+                                        shuffle=True,
+                                        reshuffle=True,
+                                        seed=self.seed,
+                                        load_masks=True,
+                                        mask_type='mask',
+                                        mask_dir=self.mask_path,
+                                        mask_ext=self.mask_suffix)
         
         normalization_layer = tf.keras.layers.Rescaling(1. / 255.)
         self.ds_training_path = self.ds_training_path.map(lambda x, y, l, i, p, m: (normalization_layer(x), normalization_layer(m)))
@@ -99,6 +136,15 @@ class Trainer:
         normalization_layer = tf.keras.layers.Rescaling(1. / 255.)
         self.ds_test_path = self.ds_test_path.map(lambda x, y, l, i, p, m: (normalization_layer(x), normalization_layer(m)))
 
+        normalization_layer = tf.keras.layers.Rescaling(1. / 255.)
+        self.ds_reference_dataset = self.ds_reference_dataset.map(lambda x, y, l, i, p, m: (normalization_layer(x), normalization_layer(m)))
+        normalization_layer = tf.keras.layers.Rescaling(1. / 255.)
+        self.ds_real_defect_dataset = self.ds_real_defect_dataset.map(lambda x, y, l, i, p, m: (normalization_layer(x), normalization_layer(m)))
+
+        self.perlin: Perlin = Perlin(size=max_size, target_size=self.target_size, reference_dataset=self.ds_reference_dataset, real_defect_dataset=self.ds_real_defect_dataset, fraction=0.75, choice=0.25, def_choice=0.25)
+
+        self.perlin.pre_generate_noise(0)
+        t=0
 
     def show_first_batch_images_and_masks(self, train: bool = True, augment: bool = False):
         """
