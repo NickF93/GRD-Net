@@ -129,8 +129,8 @@ class Perlin:
         self.perlin_generate_m_perturbations = perlin_generate_m_perturbations
 
         # Initializing empty arrays for Perlin noise and masks
-        self.perlin_noise_array = []
-        self.perlin_mask_array = []
+        self.perlin_noise_array: List[tf.Tensor] = []
+        self.perlin_mask_array: List[tf.Tensor] = []
 
     def get_image(self, regularize: bool = True) -> tf.Tensor:
         """
