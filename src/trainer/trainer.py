@@ -1,7 +1,8 @@
 import os
-import time
+import datetime
 from typing import Tuple, Optional, Union
 from enum import Enum
+import tempfile
 
 import tensorflow as tf
 import numpy as np
@@ -43,7 +44,8 @@ class Trainer:
                 first_decay_steps: int = 1000,
                 t_mul: float = 2.0,
                 m_mul: float = 1.0,
-                alpha: float = 1e-6
+                alpha: float = 1e-6,
+                log_path: str = tempfile.gettempdir()
             ):
         clear_session()
         config_gpu()
@@ -61,6 +63,7 @@ class Trainer:
         self.validation_split: float = validation_split
         self.mask_suffix: str = mask_suffix
         self.aug_pipe: AugmentPipe = AugmentPipe(random_90_rotation=random_90_rotation, rotation_angle=rotation_angle, flip_mode=flip_mode, translation_range=translation_range, zoom_range=zoom_range)
+        self.log_path: str = log_path
 
         self.train_and_validation_path: str = os.path.realpath(train_and_validation_path)
         assert os.path.exists(self.train_and_validation_path) and os.path.isdir(self.train_and_validation_path), 'train and validation path must exist and must be a directory'
@@ -164,13 +167,21 @@ class Trainer:
                                                             alpha                   = alpha
                                                         )
         
-        d_learning_rate_fn = tf.keras.optimizers.schedules.CosineDecayRestarts(
+        segmentator_lr_policy = tf.keras.optimizers.schedules.CosineDecayRestarts(
                                                             initial_learning_rate   = initial_learning_rate,
                                                             first_decay_steps       = first_decay_steps,
                                                             t_mul                   = t_mul,
                                                             m_mul                   = m_mul,
                                                             alpha                   = alpha
                                                         )
+        
+        # Optimizers
+        self.generator_optimizer = tf.keras.optimizers.Adam(learning_rate=generator_lr_policy, beta_1=0.9, beta_2=0.999, epsilon=1e-07, amsgrad=False)
+        self.discriminator_optimizer = tf.keras.optimizers.Adam(learning_rate=discriminator_lr_policy, beta_1=0.9, beta_2=0.999, epsilon=1e-07, amsgrad=False)
+        self.segmentator_optimizer = tf.keras.optimizers.Adam(learning_rate=segmentator_lr_policy, beta_1=0.9, beta_2=0.999, epsilon=1e-07, amsgrad=False)
+
+        self.logdir = self.log_path + '/' + str(self.name) + '_' + str(datetime.datetime.now().strftime("%Y%m%d-%H%M%S-%f_%A-%W-%B"))
+        
 
     def show_first_batch_images_and_masks(self, train: bool = True, augment: bool = False):
         """
