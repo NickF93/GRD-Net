@@ -38,7 +38,12 @@ class Trainer:
                 rotation_angle: Optional[Union[float, Tuple[float, float]]] = [-np.pi, np.pi],
                 flip_mode: Optional[str] = 'both',
                 translation_range: Union[float, Tuple[float, float]] = None,
-                zoom_range: Union[float, Tuple[float, float]] = [-0.1, 0.1]
+                zoom_range: Union[float, Tuple[float, float]] = [-0.1, 0.1],
+                initial_learning_rate: float = 1e-4,
+                first_decay_steps: int = 1000,
+                t_mul: float = 2.0,
+                m_mul: float = 1.0,
+                alpha: float = 1e-6
             ):
         clear_session()
         config_gpu()
@@ -141,10 +146,31 @@ class Trainer:
         normalization_layer = tf.keras.layers.Rescaling(1. / 255.)
         self.ds_real_defect_dataset = self.ds_real_defect_dataset.map(lambda x, y, l, i, p, m: (normalization_layer(x), normalization_layer(m)))
 
-        self.perlin: Perlin = Perlin(size=max_size, target_size=self.target_size, reference_dataset=self.ds_reference_dataset, real_defect_dataset=self.ds_real_defect_dataset, fraction=0.75, choice=0.25, def_choice=0.25)
+        self.perlin: Perlin = Perlin(size=max_size, target_size=self.target_size, reference_dataset=self.ds_reference_dataset, real_defect_dataset=self.ds_real_defect_dataset, fraction=0.75, choice=0.10, def_choice=0.90, perlin_queue_max=100, perlin_queue_min=100)
 
-        self.perlin.pre_generate_noise(0)
-        t=0
+        generator_lr_policy = tf.keras.optimizers.schedules.CosineDecayRestarts(
+                                                            initial_learning_rate   = initial_learning_rate,
+                                                            first_decay_steps       = first_decay_steps,
+                                                            t_mul                   = t_mul,
+                                                            m_mul                   = m_mul,
+                                                            alpha                   = alpha
+                                                        )
+        
+        discriminator_lr_policy = tf.keras.optimizers.schedules.CosineDecayRestarts(
+                                                            initial_learning_rate   = initial_learning_rate,
+                                                            first_decay_steps       = first_decay_steps,
+                                                            t_mul                   = t_mul,
+                                                            m_mul                   = m_mul,
+                                                            alpha                   = alpha
+                                                        )
+        
+        d_learning_rate_fn = tf.keras.optimizers.schedules.CosineDecayRestarts(
+                                                            initial_learning_rate   = initial_learning_rate,
+                                                            first_decay_steps       = first_decay_steps,
+                                                            t_mul                   = t_mul,
+                                                            m_mul                   = m_mul,
+                                                            alpha                   = alpha
+                                                        )
 
     def show_first_batch_images_and_masks(self, train: bool = True, augment: bool = False):
         """
