@@ -9,7 +9,7 @@ The ResnetAE class offers methods to generate the encoder (`gen_encoder`) and de
 the option to use a wide residual network.
 """
 
-from typing import Optional, Tuple, Union
+from typing import Optional, Tuple, Union, List
 import tensorflow as tf
 
 
@@ -340,6 +340,8 @@ class ResnetAE:
         
         assert wide > 0, '`wide` factor must be greater that 0'
 
+        skips: List[tf.Tensor] = []
+
         # Initial input layer
         filters = self._if
         x = inputs
@@ -406,16 +408,19 @@ class ResnetAE:
                         act=self._enc_act,
                         name=name
                     )
+            skips.append(x)
 
         # Return the encoder model, inputs, and output tensor
-        return tf.keras.models.Model(inputs=inputs, outputs=x, name=name), inputs, x
+        return inputs, x, skips
 
     def gen_decoder(
         self,
         inputs: tf.Tensor,
         last_act: bool,
         name: Union[str, int],
-        wide: int = 1
+        wide: int = 1,
+        skips: Optional[Tuple[tf.Tensor, ...]] = None,
+        override_channels: Optional[int] = None
     ) -> Tuple[tf.keras.models.Model, tf.Tensor, tf.Tensor]:
         """
         Generates the decoder part of the ResNet-based autoencoder.
@@ -430,6 +435,10 @@ class ResnetAE:
             Name or identifier for the decoder.
         wide : int
             Wide factor.
+        skips : Optional[Tupe[tf.Tensor, ...]]
+            A tuple of skips connections from Encoder.
+        override_channels : Optional[int]
+            If is None use the input channels, else use the number of channels provided as integer.
 
         Returns:
         --------
@@ -447,6 +456,18 @@ class ResnetAE:
 
         # Loop over stages and blocks in the reverse order for decoding
         for stage, blocks in enumerate(self._net_shape):
+            if skips is not None and (isinstance(skips, tuple) or isinstance(skips, list)) and len(skips) > 0:
+                _, _, _, c = tf.keras.backend.int_shape(x)
+                x = tf.keras.layers.Concatenate(axis=-1)([x, skips.pop()])
+                x = tf.keras.layers.Conv2DTranspose(
+                    filters=c,
+                    kernel_size=1,
+                    strides=1,
+                    use_bias=self._bias,
+                    padding='same',
+                    name=f"{name}_stage{stage}_aggregator0"
+                )(x)
+
             for block in range(blocks):
                 f = filters * (2 ** ((last_stage - 1) - stage))
 
@@ -495,7 +516,7 @@ class ResnetAE:
 
         # Final output layer
         x = tf.keras.layers.Conv2DTranspose(
-            filters=self._channels,
+            filters=self._channels if override_channels is None else int(override_channels),
             kernel_size=self._iks,
             strides=1,
             padding='same',
@@ -514,4 +535,4 @@ class ResnetAE:
             x = self._get_act(act='lrelu', name=name + '_in_act_last_lrelu0')(x)
 
         # Return the decoder model, inputs, and output tensor
-        return tf.keras.models.Model(inputs=inputs, outputs=x, name=name), inputs, x
+        return inputs, x

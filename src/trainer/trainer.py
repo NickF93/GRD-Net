@@ -13,6 +13,7 @@ from ..augment import AugmentPipe
 from ..loss import mae_loss, mse_loss, huber_loss, bce_loss, focal_loss, ssim_loss, ssim_rgb_loss, cosine_similarity_loss
 from ..util import config_gpu, clear_session, set_seed
 from ..perlin import Perlin
+from ..experiment_manager import ExperimentManager
 
 class NetType(Enum):
     GRD = 0
@@ -45,7 +46,8 @@ class Trainer:
                 t_mul: float = 2.0,
                 m_mul: float = 1.0,
                 alpha: float = 1e-6,
-                log_path: str = tempfile.gettempdir()
+                log_path: str = tempfile.gettempdir(),
+                mlflow_uri: str = 'localhost:5000'
             ):
         clear_session()
         config_gpu()
@@ -181,6 +183,9 @@ class Trainer:
         self.segmentator_optimizer = tf.keras.optimizers.Adam(learning_rate=segmentator_lr_policy, beta_1=0.9, beta_2=0.999, epsilon=1e-07, amsgrad=False)
 
         self.logdir = self.log_path + '/' + str(self.name) + '_' + str(datetime.datetime.now().strftime("%Y%m%d-%H%M%S-%f_%A-%W-%B"))
+        self.manager: ExperimentManager = ExperimentManager(mlflow_uri=mlflow_uri, experiment_name=self.name, tensorboard_logdir=self.logdir + os.sep + 'tensorboard', mlflow_alt_logdir=self.logdir + os.sep + 'mlflow')
+
+        
         
 
     def show_first_batch_images_and_masks(self, train: bool = True, augment: bool = False):

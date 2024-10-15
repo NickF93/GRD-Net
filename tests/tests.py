@@ -10,7 +10,7 @@ import numpy as np
 from PIL import Image
 from src.data import image_dataset_from_directory
 from src.loss import huber_loss, mse_loss, mae_loss, ssim_loss, bce_loss, focal_loss
-from src.model import BottleNeckType, create_res_ae
+from src.model import BottleNeckType, build_res_ae
 
 # Configure logging to debug level
 logging.basicConfig(level=logging.DEBUG)
@@ -225,7 +225,7 @@ def test_drae():
     encoder_model: tf.keras.models.Model
     autencoder_model: tf.keras.models.Model
     generator_model: tf.keras.models.Model
-    encoder_model, autencoder_model, generator_model = create_res_ae(img_height = img_size, channels = channels, bottleneck_type = BottleNeckType.DENSE, initial_padding=10, initial_padding_filters=64)
+    encoder_model, autencoder_model, generator_model = build_res_ae(img_height = img_size, channels = channels, bottleneck_type = BottleNeckType.DENSE, initial_padding=10, initial_padding_filters=64)
 
     tf.keras.utils.plot_model(
         encoder_model,
@@ -287,7 +287,7 @@ def test_crae():
     encoder_model: tf.keras.models.Model
     autencoder_model: tf.keras.models.Model
     generator_model: tf.keras.models.Model
-    encoder_model, autencoder_model, generator_model = create_res_ae(img_height = img_size, channels = channels, bottleneck_type = BottleNeckType.CONVOLUTIONAL, initial_padding=10, initial_padding_filters=64)
+    encoder_model, autencoder_model, generator_model = build_res_ae(img_height = img_size, channels = channels, bottleneck_type = BottleNeckType.CONVOLUTIONAL, initial_padding=10, initial_padding_filters=64)
 
     tf.keras.utils.plot_model(
         encoder_model,
@@ -349,7 +349,7 @@ def test_wdrae():
     encoder_model: tf.keras.models.Model
     autencoder_model: tf.keras.models.Model
     generator_model: tf.keras.models.Model
-    encoder_model, autencoder_model, generator_model = create_res_ae(img_height = img_size, channels = channels, bottleneck_type = BottleNeckType.DENSE, initial_padding=10, initial_padding_filters=64, wide=2)
+    encoder_model, autencoder_model, generator_model = build_res_ae(img_height = img_size, channels = channels, bottleneck_type = BottleNeckType.DENSE, initial_padding=10, initial_padding_filters=64, wide=2)
 
     tf.keras.utils.plot_model(
         encoder_model,
@@ -411,7 +411,7 @@ def test_wcrae():
     encoder_model: tf.keras.models.Model
     autencoder_model: tf.keras.models.Model
     generator_model: tf.keras.models.Model
-    encoder_model, autencoder_model, generator_model = create_res_ae(img_height = img_size, channels = channels, bottleneck_type = BottleNeckType.CONVOLUTIONAL, initial_padding=10, initial_padding_filters=64, wide=2)
+    encoder_model, autencoder_model, generator_model = build_res_ae(img_height = img_size, channels = channels, bottleneck_type = BottleNeckType.CONVOLUTIONAL, initial_padding=10, initial_padding_filters=64, wide=2)
 
     tf.keras.utils.plot_model(
         encoder_model,
