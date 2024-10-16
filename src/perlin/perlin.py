@@ -58,7 +58,7 @@ class Perlin:
         pre_generate_noise: Pre-generates noise for efficient retrieval in training loops.
     """
     def __init__(self,
-                 size: tuple[int, int],
+                 size: int,
                  target_size: tuple[int, int],
                  reference_dataset: Optional[tf.data.Dataset] = None,
                  real_defect_dataset: Optional[tf.data.Dataset] = None,
@@ -77,7 +77,7 @@ class Perlin:
         noise generation, and dataset iteration.
 
         Args:
-            size (tuple[int, int]): The size of the images to be processed.
+            size (int): The size of the images to be processed.
             target_size (tuple[int, int]): The target size for image resizing.
             reference_dataset (Optional[tf.data.Dataset]): A TensorFlow dataset for reference data. Defaults to None.
             real_defect_dataset (Optional[tf.data.Dataset]): A TensorFlow dataset for real defect data. Defaults to None.
@@ -185,7 +185,7 @@ class Perlin:
 
         # Apply central cropping and random cropping based on target size
         x = tf.image.central_crop(x, central_fraction=self.fraction)
-        x = tf.image.random_crop(x, size=(self.size[0], self.size[1], x.shape[-1]))
+        x = tf.image.random_crop(x, size=(self.size, self.size, x.shape[-1]))
 
         return x
 

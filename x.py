@@ -6,6 +6,7 @@ trainer = train.Trainer(name='test',
               net_type=train.NetType.GRD,
               batch_size=8,
               channels=3,
+              epochs=1000,
               train_and_validation_path='/ArchiveEXT4/BONFI/hazelnut_2label/train',
               train_and_validation_roi_path='/ArchiveEXT4/BONFI/hazelnut_2label/ROI',
               validation_split=0.1,
@@ -17,6 +18,7 @@ trainer = train.Trainer(name='test',
               stride=[224, 224],
               padding='VALID',
               mask_suffix='mask')
+trainer.train()
 
 trainer.show_first_batch_images_and_masks(True, False)
 trainer.show_first_batch_images_and_masks(True, True)

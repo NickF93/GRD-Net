@@ -9,6 +9,7 @@ import tensorflow as tf
 import numpy as np
 import matplotlib.pyplot as plt
 import colorama
+from tqdm.auto import tqdm
 
 from ..data import image_dataset_from_directory
 from ..augment import AugmentPipe
@@ -52,6 +53,7 @@ class Trainer:
                 net_type: NetType,
                 batch_size: int,
                 channels: int,
+                epochs: int,
                 train_and_validation_path: str,
                 train_and_validation_roi_path: str,
                 validation_split: float,
@@ -79,6 +81,7 @@ class Trainer:
         self.name = str(name)
         self.net_type: NetType = net_type
         self.batch_size: int = batch_size
+        self.epochs: int = epochs
         self.patch_size: Tuple[int, int] = patch_size
         self.patches_row: int = patches_row
         self.patches_col: int = patches_col
@@ -218,20 +221,177 @@ class Trainer:
 
         self.encoder_model, self.autencoder_model, self.generator_model = build_res_ae(bottleneck_type = BottleNeckType.DENSE, initial_padding=10, initial_padding_filters=64)
         logger.debug('Encoder structure:')
-        model_logger(model=self.encoder_model, logger=logger, save_path=tempfile.gettempdir(), print_visualkeras=True)
+        model_logger(model=self.encoder_model, logger=logger, save_path=tempfile.gettempdir(), print_visualkeras=False)
         logger.debug('Autoencoder structure:')
-        model_logger(model=self.autencoder_model, logger=logger, save_path=tempfile.gettempdir(), print_visualkeras=True)
+        model_logger(model=self.autencoder_model, logger=logger, save_path=tempfile.gettempdir(), print_visualkeras=False)
         logger.debug('Generator structure:')
-        model_logger(model=self.generator_model, logger=logger, save_path=tempfile.gettempdir(), print_visualkeras=True)
+        model_logger(model=self.generator_model, logger=logger, save_path=tempfile.gettempdir(), print_visualkeras=False)
 
         self.discriminator_model = build_res_disc(initial_padding=10, initial_padding_filters=64)
         logger.debug('Discriminator structure:')
-        model_logger(model=self.discriminator_model, logger=logger, save_path=tempfile.gettempdir(), print_visualkeras=True)
+        model_logger(model=self.discriminator_model, logger=logger, save_path=tempfile.gettempdir(), print_visualkeras=False)
 
         self.unet_model = build_res_unet(skips=4, initial_padding=10, initial_padding_filters=64)
         logger.debug('U-Net structure:')
-        model_logger(model=self.unet_model, logger=logger, save_path=tempfile.gettempdir(), print_visualkeras=True)
+        model_logger(model=self.unet_model, logger=logger, save_path=tempfile.gettempdir(), print_visualkeras=False)
         
+        self.contextual_loss = self.get_con_loss_fn(channels=self.channels, w_con=5.0, w_1=10.0, w_2=1.0)
+        self.adversarial_loss = self.get_adv_loss_fn(w_adv=1.0)
+        self.latent_loss = self.get_lat_loss_fn(w_lat=1.0)
+        self.discriminator_loss = self.get_disc_loss_fn()
+        self.segmentator_loss = self.get_seg_loss_fn(w_seg=1.0, alpha=0.25, gamma=2.0)
+    
+
+    @tf.function(autograph=True, reduce_retracing=True)
+    def augment_inputs(self, inputs):
+        image, roi = inputs
+
+        # Use tf.map_fn to apply augmentations to each element in the batch
+        augmented_images, augmented_rois = tf.map_fn(
+            lambda x: self.aug_pipe.apply(image=x[0], mask=x[1]),
+            (image, roi),  # Provide the image and roi pairs
+            parallel_iterations=12,
+            fn_output_signature=(tf.TensorSpec(shape=None, dtype=image.dtype),
+                                tf.TensorSpec(shape=None, dtype=roi.dtype))  # Specify output types and shapes
+        )
+        augmented_rois = tf.where(augmented_rois > 0.5, 1.0, 0.0)
+        del image, roi
+
+        return (tf.stop_gradient(augmented_images), tf.stop_gradient(augmented_rois))
+
+
+    @tf.function(autograph=True, jit_compile=True, reduce_retracing=True)
+    def train_step(self, inputs):
+        xr, xn, n, mr, r = inputs
+
+        with tf.GradientTape() as generator_tape, tf.GradientTape() as discriminator_tape, tf.GradientTape() as segmentator_tape:
+            # Get generator output for training
+            zr, xf, zf = self.generator_model(xn, training=True)
+
+            # Get discriminator output for training
+            fr, yr = self.discriminator_model(xr, training=True)
+            ff, yf = self.discriminator_model(xf, training=True)
+
+            # Get segmentator output for training
+            mf = self.unet_model((xr, tf.stop_gradient(xf)), training=True)
+
+            contextual_loss = self.contextual_loss(xr, xf)
+            adversarial_loss = self.adversarial_loss(fr, ff)
+            latent_loss = self.latent_loss(zr, zf)
+            generator_loss = tf.math.add_n([adversarial_loss, contextual_loss, latent_loss])
+
+            discriminator_loss = self.discriminator_loss(yr, yf)
+
+            segmentator_loss = self.segmentator_loss(mr, mf, r)
+
+        generator_grads = generator_tape.gradient(generator_loss, self.discriminator_model.trainable_weights)
+        discriminator_grads = discriminator_tape.gradient(discriminator_loss, self.generator_model.trainable_weights)
+        segmentator_grads = segmentator_tape.gradient(segmentator_loss, self.generator_model.trainable_weights)
+
+        self.generator_optimizer.apply_gradients(zip(generator_grads, self.generator_model.trainable_weights))
+        self.discriminator_optimizer.apply_gradients(zip(discriminator_grads, self.discriminator_model.trainable_weights))
+        self.segmentator_optimizer.apply_gradients(zip(segmentator_grads, self.segmentator_model.trainable_weights))
+
+        return {'Xf': xf,
+                'Mf': mf,
+                'Zr': zr,
+                'Zf': zf,
+                'contextual_loss': contextual_loss,
+                'adversarial_loss': adversarial_loss,
+                'latent_loss': latent_loss,
+                'generator_loss': generator_loss,
+                'discriminator_loss': discriminator_loss,
+                'segmentator_loss': segmentator_loss}
+
+
+    @tf.function(autograph=True, jit_compile=True, reduce_retracing=True)
+    def test_step(self, inputs):
+        xr, xn, n, mr, r = inputs
+
+        # Get generator output for validation
+        zr, xf, zf = self.generator_model(xn, training=False)
+
+        # Get discriminator output for validation
+        fr, yr = self.discriminator_model(xr, training=False)
+        ff, yf = self.discriminator_model(xf, training=False)
+
+        # Get segmentator output for validation
+        mf = self.unet_model((xr, tf.stop_gradient(xf)), training=False)
+
+        contextual_loss = self.contextual_loss(xr, xf)
+        adversarial_loss = self.adversarial_loss(fr, ff)
+        latent_loss = self.latent_loss(zr, zf)
+        generator_loss = tf.math.add_n([adversarial_loss, contextual_loss, latent_loss])
+
+        discriminator_loss = self.discriminator_loss(yr, yf)
+
+        segmentator_loss = self.segmentator_loss(mr, mf, r)
+
+        return {'Xf': xf,
+                'Mf': mf,
+                'Zr': zr,
+                'Zf': zf,
+                'contextual_loss': contextual_loss,
+                'adversarial_loss': adversarial_loss,
+                'latent_loss': latent_loss,
+                'generator_loss': generator_loss,
+                'discriminator_loss': discriminator_loss,
+                'segmentator_loss': segmentator_loss}
+    
+
+    def train_loop(self):
+        with tqdm(iterable=self.ds_training_path, leave=True, desc='Train', unit='batch') as pbar:
+            for idx, inputs in enumerate(pbar):
+                image, roi = self.augment_inputs(inputs)
+                xa, xn, n, m = self.perlin.perlin_noise_batch(image)
+                self.log_inputs((image, roi))
+                self.log_inputs((xn, m))
+                self.log_inputs((xa, n))
+
+
+    def train(self):
+        for epoch in range(self.epochs):
+            logger.info('Epoch %d / %d', epoch + 1, self.epochs)
+
+            self.perlin.pre_generate_noise(epoch=epoch, min_area=20)
+
+            self.train_loop()
+    
+    
+    def log_inputs(self, inputs):
+        images, masks = inputs
+        
+        # Batch size (number of images in the batch)
+        batch_size = images.shape[0]
+        
+        # Create a figure to plot images and masks side by side
+        fig, axes = plt.subplots(batch_size, 2, figsize=(10, batch_size * 3))
+        
+        for i in range(batch_size):
+            # Get the image and mask
+            img = images[i]
+            mask = masks[i]
+            
+            # Apply augmentation
+            augmented_img, augmented_mask = (img, mask)
+            
+            # Display the augmented image in column 0
+            axes[i, 0].imshow(augmented_img.numpy())
+            axes[i, 0].axis('off')
+            
+            # Display the corresponding augmented mask in column 1
+            axes[i, 1].imshow(tf.image.grayscale_to_rgb(augmented_mask).numpy())
+            axes[i, 1].axis('off')
+        
+        plt.tight_layout()
+        plt.show()
+        
+        plt.cla()
+        plt.clf()
+        plt.close(fig)
+        plt.close()
+        plt.close('all')
+
 
     def show_first_batch_images_and_masks(self, train: bool = True, augment: bool = False):
         """
@@ -310,6 +470,10 @@ class Trainer:
 
     def get_disc_loss_fn(self):
         return lambda pr, pf : tf.math.divide_no_nan(tf.math.add((bce_loss(tf.ones_like(pr), pr, from_logits=False, reduction='mean'), bce_loss(tf.zeros_like(pf), pf, from_logits=False, reduction='mean'))), 2.0)
+
+
+    def get_seg_loss_fn(self, w_seg: float = 1.0, alpha: float = 0.25, gamma: float = 2.0,):
+        return lambda mr, mf, roi : tf.math.multiply_no_nan(focal_loss(y_true=tf.math.multiply_no_nan(mr, roi), y_pred=mf, alpha=alpha, gamma=gamma, from_logits=False, reduction='mean'), w_seg)
 
 
     def get_image_type(self):

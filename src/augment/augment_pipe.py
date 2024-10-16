@@ -58,67 +58,67 @@ class AugmentPipe:
             ValueError: If flip_mode is not in ["none", "both", "vertical", "horizontal"].
         """
         # Configure random 90-degree rotation
-        self.__random_90_rotation: bool
-        self.__random_90_rotation_fact: int
+        self.random_90_rotation: bool
+        self.random_90_rotation_fact: int
         if random_90_rotation is None or random_90_rotation < 1:
-            self.__random_90_rotation = False
-            self.__random_90_rotation_fact = 0
+            self.random_90_rotation = False
+            self.random_90_rotation_fact = 0
         else:
-            self.__random_90_rotation = True
-            self.__random_90_rotation_fact = random_90_rotation
+            self.random_90_rotation = True
+            self.random_90_rotation_fact = random_90_rotation
 
         # Configure arbitrary rotation
-        self.__rotate: bool
-        self.__rotate_thetas: Optional[Tuple[float, float]]
+        self.rotate: bool
+        self.rotate_thetas: Optional[Tuple[float, float]]
         if rotation_angle is None:
-            self.__rotate = False
-            self.__rotate_thetas = None
+            self.rotate = False
+            self.rotate_thetas = None
         else:
-            self.__rotate = True
-            self.__rotate_thetas = [rotation_angle, rotation_angle] if isinstance(rotation_angle, float) \
+            self.rotate = True
+            self.rotate_thetas = [rotation_angle, rotation_angle] if isinstance(rotation_angle, float) \
                                    else tuple(rotation_angle) if isinstance(rotation_angle, tuple) else tuple(rotation_angle)
 
         # Configure flipping mode
-        self.__flip_v: bool
-        self.__flip_h: bool
+        self.flip_v: bool
+        self.flip_h: bool
         if flip_mode is None or flip_mode.lower().strip() == 'none':
-            self.__flip_v = False
-            self.__flip_h = False
+            self.flip_v = False
+            self.flip_h = False
         elif flip_mode.lower().strip() == 'both':
-            self.__flip_v = True
-            self.__flip_h = True
+            self.flip_v = True
+            self.flip_h = True
         elif flip_mode.lower().strip() == 'vertical':
-            self.__flip_v = True
-            self.__flip_h = False
+            self.flip_v = True
+            self.flip_h = False
         elif flip_mode.lower().strip() == 'horizontal':
-            self.__flip_v = False
-            self.__flip_h = True
+            self.flip_v = False
+            self.flip_h = True
         else:
             raise ValueError('`flip_mode` must be one of [None, "none", "both", "vertical", "horizontal"]')
 
         # Configure translation
-        self.__translate: bool
-        self.__translate_range: Optional[Tuple[float, float]]
+        self.translate: bool
+        self.translate_range: Optional[Tuple[float, float]]
         if translation_range is None:
-            self.__translate = False
-            self.__translate_range = None
+            self.translate = False
+            self.translate_range = None
         else:
-            self.__translate = True
-            self.__translate_range = [translation_range, translation_range] if isinstance(translation_range, float) or \
+            self.translate = True
+            self.translate_range = [translation_range, translation_range] if isinstance(translation_range, float) or \
                                      isinstance(translation_range, int) else tuple(translation_range)
 
         # Configure zoom
-        self.__zoom: bool
-        self.__zoom_range: Optional[Tuple[float, float]]
+        self.zoom: bool
+        self.zoom_range: Optional[Tuple[float, float]]
         if zoom_range is None:
-            self.__zoom = False
-            self.__zoom_range = None
+            self.zoom = False
+            self.zoom_range = None
         else:
-            self.__zoom = True
-            self.__zoom_range = [zoom_range, zoom_range] if isinstance(zoom_range, float) \
+            self.zoom = True
+            self.zoom_range = [zoom_range, zoom_range] if isinstance(zoom_range, float) \
                                 else tuple(zoom_range)
 
-    def __rotate_image(self, image: tf.Tensor, theta: float, mask: bool = False) -> tf.Tensor:
+    def rotate_image(self, image: tf.Tensor, theta: float, mask: bool = False) -> tf.Tensor:
         """
         Rotates an image by an arbitrary angle theta (in radians) around its center using TensorFlow ops.
 
@@ -160,7 +160,7 @@ class AugmentPipe:
 
         return tf.squeeze(transformed_image, axis=0)
 
-    def __translate_image(self, image: tf.Tensor, h: float, w: float, mask: bool = False) -> tf.Tensor:
+    def translate_image(self, image: tf.Tensor, h: float, w: float, mask: bool = False) -> tf.Tensor:
         """
         Translates an image by vertical and horizontal offsets.
 
@@ -195,7 +195,7 @@ class AugmentPipe:
 
         return tf.squeeze(translated_image, axis=0)
 
-    def __rotate_90(self, image: tf.Tensor, k: int) -> tf.Tensor:
+    def rotate_90(self, image: tf.Tensor, k: int) -> tf.Tensor:
         """
         Rotates an image by multiples of 90 degrees.
 
@@ -208,7 +208,7 @@ class AugmentPipe:
         """
         return tf.image.rot90(image, k=k)
 
-    def __zoom_image(self, image: tf.Tensor, z: float) -> tf.Tensor:
+    def zoom_image(self, image: tf.Tensor, z: float) -> tf.Tensor:
         """
         Zooms an image by a factor of z. Positive values zoom in, negative values zoom out.
 
@@ -236,7 +236,7 @@ class AugmentPipe:
         else:  # No zoom
             return image
 
-    def __h_flip(self, image: tf.Tensor) -> tf.Tensor:
+    def h_flip(self, image: tf.Tensor) -> tf.Tensor:
         """
         Performs a horizontal flip on the image.
 
@@ -248,7 +248,7 @@ class AugmentPipe:
         """
         return tf.image.flip_left_right(image)
 
-    def __v_flip(self, image: tf.Tensor) -> tf.Tensor:
+    def v_flip(self, image: tf.Tensor) -> tf.Tensor:
         """
         Performs a vertical flip on the image.
 
@@ -260,7 +260,7 @@ class AugmentPipe:
         """
         return tf.image.flip_up_down(image)
 
-    def __call__(self, image: tf.Tensor, mask: Optional[tf.Tensor] = None) -> Tuple[tf.Tensor, Optional[tf.Tensor]]:
+    def apply(self, image: tf.Tensor, mask: Optional[tf.Tensor] = None) -> Tuple[tf.Tensor, Optional[tf.Tensor]]:
         """
         Applies the specified augmentations to the input image (and mask, if provided) in sequence.
 
@@ -274,41 +274,71 @@ class AugmentPipe:
         aug_image = image
         aug_mask = mask
 
-        if self.__random_90_rotation:
-            k = random.randint(0, self.__random_90_rotation_fact)
-            aug_image = self.__rotate_90(aug_image, k)
+        if self.random_90_rotation:
+            k = tf.random.uniform(
+                shape=[],  # Scalar output
+                minval=0,  # Minimum value (inclusive)
+                maxval=self.random_90_rotation_fact + 1,  # Maximum value (exclusive)
+                dtype=tf.int32  # Output as an integer
+            )
+            aug_image = self.rotate_90(aug_image, k)
             if aug_mask is not None:
-                aug_mask = self.__rotate_90(aug_mask, k)
+                aug_mask = self.rotate_90(aug_mask, k)
 
-        if self.__rotate:
-            theta = random.uniform(self.__rotate_thetas[0], self.__rotate_thetas[1])
-            aug_image = self.__rotate_image(aug_image, theta)
+        if self.rotate:
+            theta = tf.random.uniform(
+                shape=[],  # Scalar output
+                minval=self.rotate_thetas[0],  # Minimum value (inclusive)
+                maxval=self.rotate_thetas[1] + tf.keras.backend.epsilon(),  # Maximum value (exclusive)
+                dtype=tf.float32  # Output as a float
+            )
+            aug_image = self.rotate_image(aug_image, theta)
             if aug_mask is not None:
-                aug_mask = self.__rotate_image(aug_mask, theta, mask=True)
+                aug_mask = self.rotate_image(aug_mask, theta, mask=True)
 
-        if self.__translate:
-            h_range = random.uniform(-self.__translate_range[0], self.__translate_range[0])
-            w_range = random.uniform(-self.__translate_range[1], self.__translate_range[1])
-            aug_image = self.__translate_image(aug_image, h_range, w_range)
+        if self.translate:
+            # Get the default Keras epsilon value
+            epsilon = tf.keras.backend.epsilon()
+            h_range = tf.random.uniform(
+                shape=[],  # Scalar output
+                minval=-self.translate_range[0],  # Minimum value (inclusive)
+                maxval=self.translate_range[0] + epsilon,  # Maximum value (inclusive)
+                dtype=tf.float32  # Output as a float
+            )
+
+            w_range = tf.random.uniform(
+                shape=[],  # Scalar output
+                minval=-self.translate_range[1],  # Minimum value (inclusive)
+                maxval=self.translate_range[1] + epsilon,  # Maximum value (inclusive)
+                dtype=tf.float32  # Output as a float
+            )
+            aug_image = self.translate_image(aug_image, h_range, w_range)
             if aug_mask is not None:
-                aug_mask = self.__translate_image(aug_mask, h_range, w_range, mask=False)
+                aug_mask = self.translate_image(aug_mask, h_range, w_range, mask=False)
 
-        if self.__zoom:
-            z_range = random.uniform(-self.__zoom_range[0], self.__zoom_range[1])
-            aug_image = self.__zoom_image(aug_image, z_range)
+        if self.zoom:
+            z_range = tf.random.uniform(
+                shape=[],  # Scalar output
+                minval=-self.zoom_range[0],  # Minimum value (inclusive)
+                maxval=self.zoom_range[1] + tf.keras.backend.epsilon(),  # Maximum value (inclusive)
+                dtype=tf.float32  # Output as a float
+            )
+            aug_image = self.zoom_image(aug_image, z_range)
             if aug_mask is not None:
-                aug_mask = self.__zoom_image(aug_mask, z_range)
+                aug_mask = self.zoom_image(aug_mask, z_range)
 
-        if self.__flip_h:
-            if random.random() < 0.5:
-                aug_image = self.__h_flip(aug_image)
+        if self.flip_h:
+            if tf.random.uniform(shape=[], minval=0.0, maxval=1.0) < 0.5:
+                aug_image = self.h_flip(aug_image)
                 if aug_mask is not None:
-                    aug_mask = self.__h_flip(aug_mask)
+                    aug_mask = self.h_flip(aug_mask)
 
-        if self.__flip_v:
-            if random.random() < 0.5:
-                aug_image = self.__v_flip(aug_image)
+        if self.flip_v:
+            if tf.random.uniform(shape=[], minval=0.0, maxval=1.0) < 0.5:
+                aug_image = self.v_flip(aug_image)
                 if aug_mask is not None:
-                    aug_mask = self.__v_flip(aug_mask)
+                    aug_mask = self.v_flip(aug_mask)
 
         return aug_image, aug_mask
+
+    __call__ = apply
