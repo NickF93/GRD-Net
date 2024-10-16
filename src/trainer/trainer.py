@@ -343,10 +343,12 @@ class Trainer:
         with tqdm(iterable=self.ds_training_path, leave=True, desc='Train', unit='batch') as pbar:
             for idx, inputs in enumerate(pbar):
                 image, roi = self.augment_inputs(inputs)
-                xa, xn, n, m = self.perlin.perlin_noise_batch(image)
+                xa, xn, n, m, beta = self.perlin.perlin_noise_batch(image)
                 self.log_inputs((image, roi))
+                logger.debug('%s', str(tuple(tf.reshape(beta, (-1)).numpy())))
                 self.log_inputs((xn, m))
                 self.log_inputs((xa, n))
+                logger.debug('END')
 
 
     def train(self):
@@ -376,11 +378,11 @@ class Trainer:
             augmented_img, augmented_mask = (img, mask)
             
             # Display the augmented image in column 0
-            axes[i, 0].imshow(augmented_img.numpy())
+            axes[i, 0].imshow((tf.image.grayscale_to_rgb(augmented_img) if augmented_img.shape[-1] == 1 else augmented_img).numpy())
             axes[i, 0].axis('off')
             
             # Display the corresponding augmented mask in column 1
-            axes[i, 1].imshow(tf.image.grayscale_to_rgb(augmented_mask).numpy())
+            axes[i, 1].imshow((tf.image.grayscale_to_rgb(augmented_mask) if augmented_mask.shape[-1] == 1 else augmented_mask).numpy())
             axes[i, 1].axis('off')
         
         plt.tight_layout()

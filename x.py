@@ -4,7 +4,7 @@ import src.trainer as train
 
 trainer = train.Trainer(name='test',
               net_type=train.NetType.GRD,
-              batch_size=8,
+              batch_size=2,
               channels=3,
               epochs=1000,
               train_and_validation_path='/ArchiveEXT4/BONFI/hazelnut_2label/train',

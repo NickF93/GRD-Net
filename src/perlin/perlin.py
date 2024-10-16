@@ -23,6 +23,7 @@ from tqdm.auto import tqdm
 import imgaug.augmenters as iaa
 
 from ..augment import AugmentPipe
+from ..util import set_seed
 
 class Perlin:
     """
@@ -407,10 +408,33 @@ class Perlin:
                 perturbation = perturbation[r]
                 mask = mask[r]
                 perturbation = tf.math.multiply_no_nan(perturbation, mask)
-                self.pipe(perturbation, mask)
+                perturbation, mask = self.pipe(perturbation, mask)
+            else:
+                perturbation = tf.math.multiply_no_nan(perturbation, mask)
+                perturbation, mask = self.pipe(perturbation, mask)
             del indices
 
+        if self.is_to_be_resized(perturbation):
+            perturbation = tf.image.resize(perturbation, self.target_size, method='bilinear', antialias=True)
+
+        if self.is_to_be_resized(mask):
+            mask = tf.image.resize(mask, self.target_size, method='nearest', antialias=True)
+
         return perturbation, mask
+
+    def is_to_be_resized(self, x):
+        int_shapes = tf.keras.backend.int_shape(x)
+        if len(int_shapes) == 3:
+            hp, wp, _ = int_shapes
+        else:
+            _, hp, wp, _ = int_shapes
+
+        resize = False
+        if self.target_size[0] != hp:
+            resize = True
+        if self.target_size[1] != wp:
+            resize = True
+        return resize
 
     #region [perlin_noise_batch]
     def generate_perlin_perturbation_greater_than(self, area_min: float) -> Tuple[tf.Tensor, tf.Tensor]:
@@ -442,7 +466,7 @@ class Perlin:
 
                 # Reset the Perlin noise seed if the perturbation has been regenerated too many times
                 if redo_count > 3:
-                    self.perlin.set_seed()  # Assuming `self.perlin.set_seed()` is defined elsewhere
+                    set_seed()  # Assuming `set_seed()` is defined elsewhere
                     print('Reset seed...')
 
             # Cleanup to free memory
@@ -593,16 +617,34 @@ class Perlin:
             # Delete temporary variables to free memory
             del noise, noise_mask, noise_mask_tmp
 
-        # Compute thresholded versions of X for noise application
-        X_thr = tf.math.multiply_no_nan(X, M)
-        Xa = tf.math.multiply_no_nan(X, (1 - M)) + \
-             tf.math.multiply_no_nan((1 - self.beta), X_thr) + \
-             tf.math.multiply_no_nan(self.beta, tf.math.multiply_no_nan(X, M))
-        Xn = tf.math.multiply_no_nan(M, Xa) + tf.math.multiply_no_nan((1. - M), X)
-        Xn = tf.clip_by_value((Xn - M), 0., 1.)
-        Xn = Xn + N  # Add noise to the final result
+        # Get the batch size from the input image X (assuming the first axis is the batch size)
+        batch_size = tf.shape(X)[0]
 
-        # Convert noise mask to grayscale
+        # Generate a random beta for each image in the batch, with values between 0.2 and 1.0
+        betas = tf.random.uniform(
+            shape=[batch_size, 1, 1, 1],  # Shape to broadcast over height, width, and channels
+            minval=0.2,
+            maxval=1.0,
+            dtype=tf.float32
+        )
+
+        M = tf.where(M > 0.5, 1.0, 0.0)
+
+        # Threshold the image based on the mask M (i.e., keep only the masked parts of X)
+        X_i = tf.math.multiply_no_nan(X, M)
+        X_o = tf.math.multiply_no_nan(X, (1.0 - M))
+
+        # Compute the part of the image where the mask is not applied (1 - M) to get the unmasked part
+        Xn = (
+            X_o +  # Unmasked part of X
+            tf.math.multiply_no_nan((1.0 - betas), X_i) +  # Weighted by (1 - beta) over the masked X
+            tf.math.multiply_no_nan((betas), N)
+        )
+
+        # Clip the values of Xn to be within the range [0, 1] to ensure valid pixel values
+        Xn = tf.clip_by_value(Xn, 0., 1.)
+
+        # Convert M to grayscale
         M = tf.image.rgb_to_grayscale(M)
 
         # Replace any NaN values with 0
@@ -617,7 +659,7 @@ class Perlin:
         N = tf.clip_by_value(N, clip_value_min=0., clip_value_max=1.)
         M = tf.clip_by_value(M, clip_value_min=0., clip_value_max=1.)
 
-        return X, Xn, N, M
+        return X, Xn, N, M, betas
 
     def pre_generate_noise(self, epoch: int, min_area: int = 10) -> None:
         """
