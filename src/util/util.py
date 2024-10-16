@@ -3,28 +3,30 @@ This module provides utility functions for managing TensorFlow sessions
 and configuring GPU settings.
 
 The module contains:
-1. `clear_session`: A function to clear the current Keras session and free memory.
-2. `config_gpu`: A function to configure GPUs by enabling memory growth to
-   prevent out-of-memory (OOM) errors when running TensorFlow models.
-
-These utilities are helpful when working with TensorFlow in environments where
-memory management is critical, such as training large models or running multiple
-GPU processes.
+1. `clear_session`: Clears the current Keras session and frees memory.
+2. `config_gpu`: Configures GPU settings to prevent out-of-memory errors.
+3. `set_seed`: Sets a deterministic seed for reproducibility.
+4. `model_logger`: Logs and saves visual representations of TensorFlow models.
 
 Usage:
-    from utils import clear_session, config_gpu
+    from this_module import clear_session, config_gpu, set_seed, model_logger
     clear_session()
     config_gpu()
+    seed = set_seed(42)
+    model_logger(model)
 """
 
+import os
 import time
 import random
 import math
 import gc
-from typing import List, Optional
+import logging
+from typing import Optional, List
 
 import tensorflow as tf
 import numpy as np
+import colorama
 
 def clear_session() -> None:
     """
@@ -90,18 +92,132 @@ def config_gpu() -> None:
             # If the GPUs are already initialized, this error will be raised
             print(f"Error: {e}")
 
-def set_seed(seed=None):
+def set_seed(seed: Optional[int] = None) -> int:
+    """
+    Sets the random seeds for necessary libraries to ensure reproducibility.
+
+    This function sets the random seeds for the `random`, `numpy`, and `tensorflow`
+    modules to ensure that experiments involving random processes can be replicated
+    exactly. If no seed is provided, the function generates a seed based on the current
+    time, adjusted to avoid a seed value of zero.
+
+    Parameters:
+    - seed (Optional[int]): The seed value to use for random number generation.
+      If `None`, a seed will be automatically generated based on the current time.
+
+    Returns:
+    - int: The seed used to set the random number generators.
+
+    Note:
+    - The generated seed from the current time is computed to avoid being zero,
+      which is important as some random number generators behave differently with a
+      zero seed.
+    """
     if seed is None:
         t = time.time()
         a, b = math.modf(t)
         a = float(int(a * (10 ** 7)))
         if a == 0:
             a = 1
-        seed = int((b / a) * 1000.)
+        seed = int((b / a) * 1000)
     else:
         seed = int(seed)
+
     random.seed(seed)
     tf.random.set_seed(seed)
     np.random.seed(seed)
 
     return seed
+
+class LevelNameFormatter(logging.Formatter):
+    """
+    A custom formatter for logging that applies color coding to log level names.
+
+    Attributes:
+    - level_colors (dict): A dictionary mapping log level names to their respective
+      color codes using ANSI escape sequences provided by colorama.
+
+    Methods:
+    - format: Overrides the base class method to insert color codes into the log messages.
+    """
+
+    level_colors = {
+        "DEBUG": colorama.Fore.BLUE,
+        "INFO": colorama.Fore.GREEN,
+        "WARNING": colorama.Fore.YELLOW,
+        "ERROR": colorama.Fore.RED,
+        "CRITICAL": colorama.Fore.RED + colorama.Style.BRIGHT
+    }
+
+    def format(self, record: logging.LogRecord) -> str:
+        """
+        Format the specified record as text.
+
+        Inserts ANSI color escape sequences around the log level name based on the
+        severity of the log record. This method is called automatically by the logging
+        library when a message is logged.
+
+        Parameters:
+        - record (logging.LogRecord): The log record to be formatted.
+
+        Returns:
+        - str: A formatted string with color-coded log level names.
+        """
+        log_fmt = f"{colorama.Fore.RESET}{self.level_colors[record.levelname]}%(levelname)s{colorama.Fore.RESET}: %(asctime)s - %(name)s - %(message)s"
+        formatter = logging.Formatter(log_fmt)
+        return formatter.format(record)
+
+def model_logger(model: tf.keras.models.Model, logger: Optional[logging.Logger] = None, 
+                 save_path: Optional[str] = None, print_visualkeras: bool = False) -> None:
+    """
+    Logs the TensorFlow model summary and saves visualizations of the model.
+
+    Parameters:
+    - model (tf.keras.models.Model): The model to log and visualize.
+    - logger (Optional[logging.Logger]): Logger to use for outputting the summary and other info.
+    - save_path (Optional[str]): Path where the model visualizations should be saved.
+    - print_visualkeras (bool): Flag to indicate whether to use visualkeras for additional visualization.
+
+    This function prints the model's summary either to the standard output or to a provided logger.
+    It also saves a graphical plot of the model to the specified directory if it exists. Optionally,
+    it can generate and save a visualization using visualkeras if that package is available.
+    """
+    # Print the model summary using the provided logger or default print function.
+    if logger is None:
+        model.summary()
+    else:
+        model.summary(print_fn=logger.debug)
+
+    # Check if save path is valid and save the model plot.
+    if save_path and os.path.exists(save_path) and os.path.isdir(save_path):
+        plot_file_path = os.path.join(save_path, f'{model.name}_model_plot.png')
+        tf.keras.utils.plot_model(
+            model,
+            to_file=plot_file_path,
+            show_shapes=True,
+            show_dtype=True,
+            show_layer_names=True,
+            expand_nested=True,
+            dpi=250,
+            show_layer_activations=True,
+            show_trainable=True
+        )
+        if logger:
+            logger.info(f"Model plot saved to {plot_file_path}")
+
+        # Generate a visualkeras model plot if requested and possible.
+        if print_visualkeras:
+            try:
+                import visualkeras
+
+                vk_file_path = os.path.join(save_path, f'{model.name}_visualkeras.png')
+                visualkeras.layered_view(model, to_file=vk_file_path)
+                if logger:
+                    logger.info(f"Visualkeras model visualization saved to {vk_file_path}")
+
+            except ImportError:
+                if logger:
+                    logger.warning("visualkeras is not installed. Please install it to enable visualkeras plotting.")
+            except Exception as ex:
+                if logger:
+                    logger.warning(f"Error plotting with visualkeras: {ex}")

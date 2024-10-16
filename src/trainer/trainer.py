@@ -3,17 +3,44 @@ import datetime
 from typing import Tuple, Optional, Union
 from enum import Enum
 import tempfile
+import logging
 
 import tensorflow as tf
 import numpy as np
 import matplotlib.pyplot as plt
+import colorama
 
 from ..data import image_dataset_from_directory
 from ..augment import AugmentPipe
 from ..loss import mae_loss, mse_loss, huber_loss, bce_loss, focal_loss, ssim_loss, ssim_rgb_loss, cosine_similarity_loss
-from ..util import config_gpu, clear_session, set_seed
+from ..util import config_gpu, clear_session, set_seed, LevelNameFormatter, model_logger
 from ..perlin import Perlin
 from ..experiment_manager import ExperimentManager
+from ..model import BottleNeckType, build_res_ae, build_res_disc, build_res_unet
+
+colorama.init()
+
+# Create logger
+logger = logging.getLogger(__name__)
+logger.setLevel(logging.DEBUG)
+
+# Create console handler and set level to debug
+ch = logging.StreamHandler()
+ch.setLevel(logging.DEBUG)
+
+# Choose the custom formatter
+ch.setFormatter(LevelNameFormatter())
+
+# Add the handler to the logger
+logger.addHandler(ch)
+
+logger.info('Logger configured')
+
+clear_session()
+logger.info('Cleared session')
+
+config_gpu()
+logger.info('GPU configured for TensorFlow memory growth')
 
 class NetType(Enum):
     GRD = 0
@@ -49,9 +76,6 @@ class Trainer:
                 log_path: str = tempfile.gettempdir(),
                 mlflow_uri: str = 'localhost:5000'
             ):
-        clear_session()
-        config_gpu()
-
         self.name = str(name)
         self.net_type: NetType = net_type
         self.batch_size: int = batch_size
@@ -185,7 +209,28 @@ class Trainer:
         self.logdir = self.log_path + '/' + str(self.name) + '_' + str(datetime.datetime.now().strftime("%Y%m%d-%H%M%S-%f_%A-%W-%B"))
         self.manager: ExperimentManager = ExperimentManager(mlflow_uri=mlflow_uri, experiment_name=self.name, tensorboard_logdir=self.logdir + os.sep + 'tensorboard', mlflow_alt_logdir=self.logdir + os.sep + 'mlflow')
 
-        
+        logger.info('Building models...')
+        self.encoder_model: tf.keras.models.Model = None
+        self.autencoder_model: tf.keras.models.Model = None
+        self.generator_model: tf.keras.models.Model = None
+        self.discriminator_model: tf.keras.models.Model = None
+        self.unet_model: tf.keras.models.Model = None
+
+        self.encoder_model, self.autencoder_model, self.generator_model = build_res_ae(bottleneck_type = BottleNeckType.DENSE, initial_padding=10, initial_padding_filters=64)
+        logger.debug('Encoder structure:')
+        model_logger(model=self.encoder_model, logger=logger, save_path=tempfile.gettempdir(), print_visualkeras=True)
+        logger.debug('Autoencoder structure:')
+        model_logger(model=self.autencoder_model, logger=logger, save_path=tempfile.gettempdir(), print_visualkeras=True)
+        logger.debug('Generator structure:')
+        model_logger(model=self.generator_model, logger=logger, save_path=tempfile.gettempdir(), print_visualkeras=True)
+
+        self.discriminator_model = build_res_disc(initial_padding=10, initial_padding_filters=64)
+        logger.debug('Discriminator structure:')
+        model_logger(model=self.discriminator_model, logger=logger, save_path=tempfile.gettempdir(), print_visualkeras=True)
+
+        self.unet_model = build_res_unet(skips=4, initial_padding=10, initial_padding_filters=64)
+        logger.debug('U-Net structure:')
+        model_logger(model=self.unet_model, logger=logger, save_path=tempfile.gettempdir(), print_visualkeras=True)
         
 
     def show_first_batch_images_and_masks(self, train: bool = True, augment: bool = False):
