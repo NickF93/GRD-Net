@@ -254,7 +254,7 @@ class Trainer:
         self.adversarial_loss = self.get_adv_loss_fn(w_adv=1.0)
         self.latent_loss = self.get_lat_loss_fn(w_lat=1.0)
         self.discriminator_loss = self.get_disc_loss_fn()
-        self.segmentator_loss = self.get_seg_loss_fn(w_seg=1.0, alpha=0.25, gamma=2.0)
+        self.segmentator_loss = self.get_seg_loss_fn(w_seg=1.0, alpha=0.75, gamma=2.0)
 
         self.cumulative_epoch: int = 0
         self.cumulative_train_step: int = 0
@@ -561,7 +561,7 @@ class Trainer:
         return lambda pr, pf : tf.math.divide_no_nan(tf.math.add(bce_loss(tf.ones_like(pr), pr, from_logits=False, reduction='mean'), bce_loss(tf.zeros_like(pf), pf, from_logits=False, reduction='mean')), 2.0)
 
 
-    def get_seg_loss_fn(self, w_seg: float = 1.0, alpha: float = 0.25, gamma: float = 2.0,):
+    def get_seg_loss_fn(self, w_seg: float = 1.0, alpha: float = 0.75, gamma: float = 2.0,):
         return lambda mr, mf, roi : tf.math.multiply_no_nan(focal_loss(y_true=tf.math.multiply_no_nan(mr, roi), y_pred=mf, alpha=alpha, gamma=gamma, from_logits=False, reduction='mean'), w_seg)
 
 
