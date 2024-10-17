@@ -381,9 +381,34 @@ class Trainer:
         with tqdm(iterable=self.ds_training_path, leave=True, desc='Train', unit='batch') as pbar:
             for idx, inputs in enumerate(pbar):
                 image, roi = self.augment_inputs(inputs)
-                image = self.superimpose_gaussian_noise(image, 0.01)
-                xa, xn, n, m, beta = self.perlin.perlin_noise_batch(image)
-                inputs = (xa, xn, n, m, roi, beta)
+                image_gaussian = self.superimpose_gaussian_noise(image, 0.01)
+                xa, xn, n, m, beta = self.perlin.perlin_noise_batch(image_gaussian)
+
+                mz = tf.zeros_like(m)
+                nz = tf.zeros_like(n)
+                betaz = tf.zeros_like(beta)
+
+                image = image[:, tf.newaxis, ...]  # image without noise
+                xnz = image  # image with noise (without any superimposed niose)
+                mz = mz[:, tf.newaxis, ...]  # fake noise map, all zeros
+                roiz = roiz[:, tf.newaxis, ...]  # copy of roi
+                betaz = betaz[:, tf.newaxis, ...]  # fake betas, all zeros
+
+                image = tf.concat((image, image), axis=1)
+                xn = tf.concat((xn, xnz), axis=1)
+                n = tf.concat((n, nz), axis=1)
+                m = tf.concat((m, mz), axis=1)
+                roi = tf.concat((roi, roiz), axis=1)
+                beta = tf.concat((beta, betaz), axis=1)
+
+                image = tf.reshape(image, shape=(-1, *image.shape[-3:]))
+                xn = tf.reshape(xn, shape=(-1, *xn.shape[-3:]))
+                n = tf.reshape(n, shape=(-1, *n.shape[-3:]))
+                m = tf.reshape(m, shape=(-1, *m.shape[-3:]))
+                roi = tf.reshape(roi, shape=(-1, *roi.shape[-3:]))
+                beta = tf.reshape(beta, shape=(-1, *beta.shape[-3:]))
+
+                inputs = (image, xn, n, m, roi, beta)
                 loss_dict = self.train_step(inputs)
                 xf = loss_dict['Xf']
                 mf = loss_dict['Mf']
