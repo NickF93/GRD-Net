@@ -256,7 +256,7 @@ def bce_loss(
 def focal_loss(
     y_true: tf.Tensor,
     y_pred: tf.Tensor,
-    alpha: float = 0.25,
+    alpha: float = 1.0,
     gamma: float = 2.0,
     from_logits: bool = False,
     reduction: str = 'mean',
