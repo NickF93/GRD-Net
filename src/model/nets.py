@@ -172,6 +172,8 @@ def build_res_ae(
     generator_input = tf.keras.layers.Input(shape=image_shape)
     autoencoder_output, latent_space = autencoder_model(generator_input)
     generator_output = encoder_model(autoencoder_output)
+    if isinstance(generator_output, (tuple, list)):
+        generator_output = generator_output[0]
     generator_model = tf.keras.models.Model(inputs=(generator_input,), outputs=(generator_output, autoencoder_output, latent_space))
 
     return encoder_model, autencoder_model, generator_model
@@ -235,7 +237,7 @@ def build_res_disc(
     x = tf.keras.layers.Dropout(0.10)(x)
     x = tf.keras.layers.Dense(1, activation='sigmoid')(x)
 
-    discriminator_model = tf.keras.models.Model(inputs=(inputs,), outputs=(x, enc_out), name=f'discriminator_{name}')
+    discriminator_model = tf.keras.models.Model(inputs=(inputs,), outputs=(enc_out, x), name=f'discriminator_{name}')
     return discriminator_model
 
 def build_res_unet(

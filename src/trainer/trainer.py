@@ -219,7 +219,7 @@ class Trainer:
         self.discriminator_model: tf.keras.models.Model = None
         self.unet_model: tf.keras.models.Model = None
 
-        self.encoder_model, self.autencoder_model, self.generator_model = build_res_ae(bottleneck_type = BottleNeckType.DENSE, initial_padding=10, initial_padding_filters=64)
+        self.encoder_model, self.autencoder_model, self.generator_model = build_res_ae(img_height = self.patch_size[0], img_width = self.patch_size[1], channels = self.channels, bottleneck_type = BottleNeckType.DENSE, initial_padding=10, initial_padding_filters=64)
         logger.debug('Encoder structure:')
         model_logger(model=self.encoder_model, logger=logger, save_path=tempfile.gettempdir(), print_visualkeras=False)
         logger.debug('Autoencoder structure:')
@@ -227,11 +227,11 @@ class Trainer:
         logger.debug('Generator structure:')
         model_logger(model=self.generator_model, logger=logger, save_path=tempfile.gettempdir(), print_visualkeras=False)
 
-        self.discriminator_model = build_res_disc(initial_padding=10, initial_padding_filters=64)
+        self.discriminator_model = build_res_disc(img_height = self.patch_size[0], img_width = self.patch_size[1], channels = self.channels, initial_padding=10, initial_padding_filters=64)
         logger.debug('Discriminator structure:')
         model_logger(model=self.discriminator_model, logger=logger, save_path=tempfile.gettempdir(), print_visualkeras=False)
 
-        self.unet_model = build_res_unet(skips=4, initial_padding=10, initial_padding_filters=64)
+        self.unet_model = build_res_unet(img_height = self.patch_size[0], img_width = self.patch_size[1], channels = self.channels, skips=4, initial_padding=10, initial_padding_filters=64)
         logger.debug('U-Net structure:')
         model_logger(model=self.unet_model, logger=logger, save_path=tempfile.gettempdir(), print_visualkeras=False)
         
@@ -242,7 +242,7 @@ class Trainer:
         self.segmentator_loss = self.get_seg_loss_fn(w_seg=1.0, alpha=0.25, gamma=2.0)
     
 
-    @tf.function(autograph=True, reduce_retracing=True)
+    @tf.function(reduce_retracing=True)
     def augment_inputs(self, inputs):
         image, roi = inputs
 
@@ -258,11 +258,22 @@ class Trainer:
         del image, roi
 
         return (tf.stop_gradient(augmented_images), tf.stop_gradient(augmented_rois))
+    
+
+    @tf.function(reduce_retracing=True)
+    def superimpose_gaussian_noise(self, x, stddev: float = 1.0):
+
+        stddev_gen = tf.random.uniform((), 0, stddev)
+        noise = tf.random.normal(shape=tf.shape(x), mean=0.0, stddev=stddev_gen, dtype=x.dtype)
+        noisy_batch = x + noise
+        noisy_batch = tf.clip_by_value(noisy_batch, clip_value_min=0.0, clip_value_max=1.0)
+
+        return noisy_batch
 
 
-    @tf.function(autograph=True, jit_compile=True, reduce_retracing=True)
+    @tf.function(reduce_retracing=True)
     def train_step(self, inputs):
-        xr, xn, n, mr, r = inputs
+        xr, xn, n, mr, r, beta = inputs
 
         with tf.GradientTape() as generator_tape, tf.GradientTape() as discriminator_tape, tf.GradientTape() as segmentator_tape:
             # Get generator output for training
@@ -270,41 +281,47 @@ class Trainer:
 
             # Get discriminator output for training
             fr, yr = self.discriminator_model(xr, training=True)
-            ff, yf = self.discriminator_model(xf, training=True)
+            ff, yf = self.discriminator_model(tf.stop_gradient(xf), training=True)
 
             # Get segmentator output for training
             mf = self.unet_model((xr, tf.stop_gradient(xf)), training=True)
+            mf = mf[0]
 
             contextual_loss = self.contextual_loss(xr, xf)
             adversarial_loss = self.adversarial_loss(fr, ff)
             latent_loss = self.latent_loss(zr, zf)
-            generator_loss = tf.math.add_n([adversarial_loss, contextual_loss, latent_loss])
+            noise_loss = 1.0 * tf.math.reduce_mean((((xn * mr) - ((xr * mr) * (1 - beta))) - (n * beta)) ** 2.0)
+            generator_loss = tf.math.add_n([adversarial_loss, contextual_loss, latent_loss, noise_loss])
 
             discriminator_loss = self.discriminator_loss(yr, yf)
 
             segmentator_loss = self.segmentator_loss(mr, mf, r)
 
-        generator_grads = generator_tape.gradient(generator_loss, self.discriminator_model.trainable_weights)
-        discriminator_grads = discriminator_tape.gradient(discriminator_loss, self.generator_model.trainable_weights)
-        segmentator_grads = segmentator_tape.gradient(segmentator_loss, self.generator_model.trainable_weights)
+        generator_grads = generator_tape.gradient(generator_loss, self.generator_model.trainable_weights)
+        discriminator_grads = discriminator_tape.gradient(discriminator_loss, self.discriminator_model.trainable_weights)
+        segmentator_grads = segmentator_tape.gradient(segmentator_loss, self.unet_model.trainable_weights)
 
         self.generator_optimizer.apply_gradients(zip(generator_grads, self.generator_model.trainable_weights))
         self.discriminator_optimizer.apply_gradients(zip(discriminator_grads, self.discriminator_model.trainable_weights))
-        self.segmentator_optimizer.apply_gradients(zip(segmentator_grads, self.segmentator_model.trainable_weights))
+        self.segmentator_optimizer.apply_gradients(zip(segmentator_grads, self.unet_model.trainable_weights))
 
         return {'Xf': xf,
                 'Mf': mf,
                 'Zr': zr,
                 'Zf': zf,
-                'contextual_loss': contextual_loss,
-                'adversarial_loss': adversarial_loss,
-                'latent_loss': latent_loss,
-                'generator_loss': generator_loss,
-                'discriminator_loss': discriminator_loss,
-                'segmentator_loss': segmentator_loss}
+                'losses' : {
+                    'contextual_loss': contextual_loss,
+                    'adversarial_loss': adversarial_loss,
+                    'latent_loss': latent_loss,
+                    'noise_loss' : noise_loss,
+                    'generator_loss': generator_loss,
+                    'discriminator_loss': discriminator_loss,
+                    'segmentator_loss': segmentator_loss
+                }
+        }
 
 
-    @tf.function(autograph=True, jit_compile=True, reduce_retracing=True)
+    @tf.function(reduce_retracing=True)
     def test_step(self, inputs):
         xr, xn, n, mr, r = inputs
 
@@ -340,15 +357,30 @@ class Trainer:
     
 
     def train_loop(self):
+        cumulative_loss_dict = {}
+
         with tqdm(iterable=self.ds_training_path, leave=True, desc='Train', unit='batch') as pbar:
             for idx, inputs in enumerate(pbar):
                 image, roi = self.augment_inputs(inputs)
+                image = self.superimpose_gaussian_noise(image, 0.01)
                 xa, xn, n, m, beta = self.perlin.perlin_noise_batch(image)
-                self.log_inputs((image, roi))
-                logger.debug('%s', str(tuple(tf.reshape(beta, (-1)).numpy())))
-                self.log_inputs((xn, m))
-                self.log_inputs((xa, n))
-                logger.debug('END')
+                inputs = (xa, xn, n, m, roi, beta)
+                loss_dict = self.train_step(inputs)
+                for loss, loss_val in loss_dict['losses'].items():
+                    if loss not in cumulative_loss_dict:
+                        cumulative_loss_dict[loss] = 0.0
+                    cumulative_loss_dict[loss] += loss_val.numpy().astype(np.float64)
+                averaged_loss_dict = {}
+                for loss, loss_val in cumulative_loss_dict.items():
+                    averaged_loss_dict[loss] = f'{(loss_val / np.float64(idx + 1)):.4f}'
+                pbar.set_postfix(averaged_loss_dict)
+
+
+                #self.log_inputs((image, roi))
+                #logger.debug('%s', str(tuple(tf.reshape(beta, (-1)).numpy())))
+                #self.log_inputs((xn, m))
+                #self.log_inputs((xa, n))
+                #logger.debug('END')
 
 
     def train(self):
@@ -471,7 +503,7 @@ class Trainer:
 
 
     def get_disc_loss_fn(self):
-        return lambda pr, pf : tf.math.divide_no_nan(tf.math.add((bce_loss(tf.ones_like(pr), pr, from_logits=False, reduction='mean'), bce_loss(tf.zeros_like(pf), pf, from_logits=False, reduction='mean'))), 2.0)
+        return lambda pr, pf : tf.math.divide_no_nan(tf.math.add(bce_loss(tf.ones_like(pr), pr, from_logits=False, reduction='mean'), bce_loss(tf.zeros_like(pf), pf, from_logits=False, reduction='mean')), 2.0)
 
 
     def get_seg_loss_fn(self, w_seg: float = 1.0, alpha: float = 0.25, gamma: float = 2.0,):

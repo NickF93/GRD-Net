@@ -41,7 +41,6 @@ def _binary_crossentropy(y_true, y_pred, from_logits=False):
     return bce  # No reduction is applied here
 
 
-@tf.function(reduce_retracing=True)
 def huber_loss(
     y_true: tf.Tensor,
     y_pred: tf.Tensor,
@@ -75,7 +74,6 @@ def huber_loss(
     return _apply_reduction(loss, reduction=reduction, axis=axis)
 
 
-@tf.function(reduce_retracing=True)
 def mse_loss(
     y_true: tf.Tensor,
     y_pred: tf.Tensor,
@@ -101,7 +99,6 @@ def mse_loss(
     return _apply_reduction(squared_error, reduction=reduction, axis=axis)
 
 
-@tf.function(reduce_retracing=True)
 def mae_loss(
     y_true: tf.Tensor,
     y_pred: tf.Tensor,
@@ -127,7 +124,6 @@ def mae_loss(
     return _apply_reduction(abs_error, reduction=reduction, axis=axis)
 
 
-@tf.function(reduce_retracing=True)
 def ssim_loss(
     y_true: tf.Tensor,
     y_pred: tf.Tensor,
@@ -160,11 +156,6 @@ def ssim_loss(
         - The SSIM value is computed using `tf.image.ssim`, which measures the similarity between two images.
         - If `reduction='none'`, the SSIM result is expanded by dividing by the product of the target shape (excluding batch size).
     """
-    # Ensure that y_true and y_pred have the same shape
-    tf.debugging.assert_equal(
-        tf.shape(y_true), tf.shape(y_pred),
-        message="y_true and y_pred must have the same shape."
-    )
 
     # Infer target shape (excluding the batch axis)
     target_shape = tf.shape(y_true)[1:]
@@ -183,7 +174,6 @@ def ssim_loss(
     return _apply_reduction(loss, reduction=reduction, axis=axis)
 
 
-@tf.function(reduce_retracing=True)
 def ssim_rgb_loss(
     y_true: tf.Tensor,
     y_pred: tf.Tensor,
@@ -204,24 +194,23 @@ def ssim_rgb_loss(
     Returns:
     - tf.Tensor: The computed SSIM loss, reduced according to the specified reduction type.
     """
-    # Ensure that y_true and y_pred have the same shape and 3 channels (RGB)
-    tf.debugging.assert_equal(
-        tf.shape(y_true), tf.shape(y_pred),
-        message="y_true and y_pred must have the same shape."
-    )
-    tf.debugging.assert_equal(
-        tf.shape(y_true)[-1], 3,
-        message="y_true and y_pred must have 3 channels (RGB)."
-    )
 
     # Infer target shape (excluding the batch axis)
     target_shape = tf.shape(y_true)[1:]
-    target_size = tf.reduce_prod(target_shape)
+    target_size = tf.stop_gradient(tf.reduce_prod(target_shape))
 
+    y_pred_r = tf.expand_dims(y_pred[..., 0], -1)
+    y_pred_g = tf.expand_dims(y_pred[..., 1], -1)
+    y_pred_b = tf.expand_dims(y_pred[..., 2], -1)
+    
+    y_true_r = tf.expand_dims(y_true[..., 0], -1)
+    y_true_g = tf.expand_dims(y_true[..., 1], -1)
+    y_true_b = tf.expand_dims(y_true[..., 2], -1)
+    
     # Compute SSIM for each channel separately
-    ssim_r = tf.image.ssim(y_true[..., 0:1], y_pred[..., 0:1], max_val=max_val)
-    ssim_g = tf.image.ssim(y_true[..., 1:1], y_pred[..., 1:1], max_val=max_val)
-    ssim_b = tf.image.ssim(y_true[..., 2:1], y_pred[..., 2:1], max_val=max_val)
+    ssim_r = tf.image.ssim(y_pred_r, y_true_r, max_val=max_val)
+    ssim_g = tf.image.ssim(y_pred_g, y_true_g, max_val=max_val)
+    ssim_b = tf.image.ssim(y_pred_b, y_true_b, max_val=max_val)
 
     # Average the SSIM for each channel
     ssim_rgb = (ssim_r + ssim_g + ssim_b) / 3.0
@@ -237,7 +226,6 @@ def ssim_rgb_loss(
     return _apply_reduction(loss, reduction=reduction, axis=axis)
 
 
-@tf.function(reduce_retracing=True)
 def bce_loss(
     y_true: tf.Tensor,
     y_pred: tf.Tensor,
@@ -265,7 +253,6 @@ def bce_loss(
     return _apply_reduction(loss, reduction=reduction, axis=axis)
 
 
-@tf.function(reduce_retracing=True)
 def focal_loss(
     y_true: tf.Tensor,
     y_pred: tf.Tensor,
@@ -297,7 +284,6 @@ def focal_loss(
     return _apply_reduction(loss, reduction=reduction, axis=axis)
 
 
-@tf.function(reduce_retracing=True)
 def cosine_similarity_loss(
     y_true: tf.Tensor,
     y_pred: tf.Tensor,

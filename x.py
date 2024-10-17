@@ -1,6 +1,10 @@
 import tensorflow as tf
 
 import src.trainer as train
+import src.util as util
+
+util.clear_session()
+util.config_gpu()
 
 trainer = train.Trainer(name='test',
               net_type=train.NetType.GRD,
@@ -12,10 +16,10 @@ trainer = train.Trainer(name='test',
               validation_split=0.1,
               test_path='/ArchiveEXT4/BONFI/hazelnut_2label/test',
               mask_path='/ArchiveEXT4/BONFI/hazelnut_2label/MASK',
-              patch_size=[224, 224],
+              patch_size=[64, 64],
               patches_row=1,
               patches_col=1,
-              stride=[224, 224],
+              stride=[64, 64],
               padding='VALID',
               mask_suffix='mask')
 trainer.train()
