@@ -159,7 +159,6 @@ def ssim_loss(
 
     # Infer target shape (excluding the batch axis)
     target_shape = tf.shape(y_true)[1:]
-    target_size = tf.reduce_prod(target_shape)
 
     # Compute SSIM for each image in the batch
     ssim_value: tf.Tensor = tf.image.ssim(y_true, y_pred, max_val=max_val)
@@ -169,7 +168,7 @@ def ssim_loss(
 
     # If reduction is 'none', expand the SSIM result and divide by the product of the target shape
     if reduction == 'none':
-        loss = tf.expand_dims(loss, axis=-1) / tf.cast(target_size, loss.dtype)
+        loss = tf.reshape(loss, shape=(-1, 1, 1, 1)) * tf.ones(shape=(loss.shape[0], *target_shape))
     
     return _apply_reduction(loss, reduction=reduction, axis=axis)
 
@@ -197,7 +196,6 @@ def ssim_rgb_loss(
 
     # Infer target shape (excluding the batch axis)
     target_shape = tf.shape(y_true)[1:]
-    target_size = tf.stop_gradient(tf.reduce_prod(target_shape))
 
     y_pred_r = tf.expand_dims(y_pred[..., 0], -1)
     y_pred_g = tf.expand_dims(y_pred[..., 1], -1)
@@ -220,7 +218,7 @@ def ssim_rgb_loss(
 
     # If reduction is 'none', expand the SSIM result and divide by the product of the target shape
     if reduction == 'none':
-        loss = tf.expand_dims(loss, axis=-1) / tf.cast(target_size, loss.dtype)
+        loss = tf.reshape(loss, shape=(-1, 1, 1, 1)) * tf.ones(shape=(loss.shape[0], *target_shape))
 
     # Apply reduction
     return _apply_reduction(loss, reduction=reduction, axis=axis)
@@ -258,6 +256,7 @@ def focal_loss(
     y_pred: tf.Tensor,
     alpha: float = 1.0,
     gamma: float = 2.0,
+    apply_class_balancing: bool = True,
     from_logits: bool = False,
     reduction: str = 'mean',
     axis: Optional[Union[int, list, tuple]] = None
@@ -278,7 +277,7 @@ def focal_loss(
     focal_bce = focal_factor * bce
 
     weight = y_true * alpha + (1 - y_true) * (1 - alpha)
-    loss: tf.Tensor = weight * focal_bce
+    loss: tf.Tensor = weight * focal_bce if apply_class_balancing else focal_bce
 
     # Apply the private reduction function
     return _apply_reduction(loss, reduction=reduction, axis=axis)
@@ -313,4 +312,48 @@ def cosine_similarity_loss(
     loss: tf.Tensor = 1 - cosine_sim
 
     # Apply reduction to the cosine similarity loss
+    return _apply_reduction(loss, reduction=reduction, axis=axis)
+
+
+def dice_loss(
+    y_true: tf.Tensor,
+    y_pred: tf.Tensor,
+    smooth: float = 1.0,
+    from_logits: bool = False,
+    reduction: str = 'mean',
+    axis: Optional[Union[int, list, tuple]] = None
+) -> tf.Tensor:
+    """
+    Compute the Dice loss between true and predicted tensors.
+
+    Parameters:
+    - y_true (tf.Tensor): Ground truth images with shape [batch_size, height, width, channels].
+    - y_pred (tf.Tensor): Predicted images with shape [batch_size, height, width, channels].
+    - smooth (float): Smoothing factor to avoid division by zero. Default is 1.0.
+    - from_logits (bool): Whether the predictions are logits. Default is False.
+    - reduction (str): Specifies the reduction method: 'none', 'sum', or 'mean'. Default is 'mean'.
+    - axis (Optional[Union[int, list, tuple]]): Axes to reduce. Default is None, reducing all dimensions.
+
+    Returns:
+    - tf.Tensor: The computed Dice loss.
+    """
+    if from_logits:
+        y_pred = tf.nn.sigmoid(y_pred)
+
+    # Calculate the intersection and Dice coefficient
+    intersection = tf.reduce_sum(y_pred * y_true, axis=(1, 2, 3))
+    dice = (2.0 * intersection + smooth) / (
+        tf.reduce_sum(y_pred ** 2.0, axis=(1, 2, 3)) + 
+        tf.reduce_sum(y_true ** 2.0, axis=(1, 2, 3)) + 
+        smooth
+    )
+
+    # Convert Dice to loss value (1 - Dice)
+    loss: tf.Tensor = 1 - dice
+
+    # If reduction is 'none', reshape loss to match target shape
+    if reduction == 'none':
+        loss = tf.reshape(loss, shape=(-1, 1, 1, 1)) * tf.ones(shape=(loss.shape[0], *tf.shape(y_true)[1:]))
+
+    # Apply reduction
     return _apply_reduction(loss, reduction=reduction, axis=axis)

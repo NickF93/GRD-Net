@@ -217,6 +217,32 @@ def test_focal_loss_mean(y_true, y_pred):
 
     assert tf.abs(custom_loss - tf_loss).numpy() < 1e-6
 
+
+def test_focal_bce_loss_mean(y_true, y_pred):
+    """
+    Test the custom BCE loss function with 'mean' reduction and compare it with TensorFlow's built-in BCE implementation.
+    """
+
+    alpha: float = 0.5
+    gamma: float = 0.0
+
+    y_true = tf.math.abs(y_true)
+    y_true = tf.clip_by_value(((y_true - tf.reduce_min(y_true)) / (tf.reduce_max(y_true) - tf.reduce_min(y_true))), 0.0, 1.0)
+    y_true = tf.cast(y_true >= 0.5, dtype=tf.float32)
+
+    # Custom focal loss with 'mean' reduction
+    custom_loss = focal_loss(y_true, y_pred, from_logits=True, alpha=alpha, gamma=gamma, apply_class_balancing=False, reduction='mean')
+
+    # TensorFlow's built-in focal loss
+    tf_loss = tf.reduce_mean(tf.keras.losses.BinaryCrossentropy(from_logits=True, reduction=tf.keras.losses.Reduction.NONE)(y_true, y_pred))
+
+    # Compare results step by step
+    print("Custom loss:", custom_loss.numpy())
+    print("TensorFlow loss:", tf_loss.numpy())
+
+    assert tf.abs(custom_loss - tf_loss).numpy() < 1e-6
+
+
 def test_drae():
     batch_size: int = 8
     img_size: int = 224
@@ -278,6 +304,7 @@ def test_drae():
     assert tuple(encoder_model.outputs[0].shape) == tuple(generator_model.outputs[0].shape)
     assert tuple(encoder_model.outputs[0].shape) == tuple(generator_model.outputs[2].shape)
     assert (None, img_size, img_size, channels) == tuple(generator_model.outputs[1].shape)
+
 
 def test_crae():
     batch_size: int = 8
@@ -341,6 +368,7 @@ def test_crae():
     assert tuple(encoder_model.outputs[0].shape) == tuple(generator_model.outputs[2].shape)
     assert (None, img_size, img_size, channels) == tuple(generator_model.outputs[1].shape)
 
+
 def test_wdrae():
     batch_size: int = 8
     img_size: int = 224
@@ -402,6 +430,7 @@ def test_wdrae():
     assert tuple(encoder_model.outputs[0].shape) == tuple(generator_model.outputs[0].shape)
     assert tuple(encoder_model.outputs[0].shape) == tuple(generator_model.outputs[2].shape)
     assert (None, img_size, img_size, channels) == tuple(generator_model.outputs[1].shape)
+
 
 def test_wcrae():
     batch_size: int = 8

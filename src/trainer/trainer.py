@@ -1,6 +1,6 @@
 import os
 import datetime
-from typing import Tuple, Optional, Union, List
+from typing import Tuple, Optional, Union, List, Callable
 from enum import Enum
 import tempfile
 import logging
@@ -13,7 +13,7 @@ from tqdm.auto import tqdm
 
 from ..data import image_dataset_from_directory
 from ..augment import AugmentPipe
-from ..loss import mae_loss, mse_loss, huber_loss, bce_loss, focal_loss, ssim_loss, ssim_rgb_loss, cosine_similarity_loss
+from ..loss import mae_loss, mse_loss, huber_loss, bce_loss, focal_loss, ssim_loss, ssim_rgb_loss, cosine_similarity_loss, dice_loss
 from ..util import config_gpu, clear_session, set_seed, LevelNameFormatter, model_logger
 from ..perlin import Perlin
 from ..experiment_manager import ExperimentManager
@@ -601,8 +601,50 @@ class Trainer:
         return lambda pr, pf : tf.math.divide_no_nan(tf.math.add(bce_loss(tf.ones_like(pr), pr, from_logits=False, reduction='mean'), bce_loss(tf.zeros_like(pf), pf, from_logits=False, reduction='mean')), 2.0)
 
 
-    def get_seg_loss_fn(self, w_seg: float = 1.0, alpha: float = 1.0, gamma: float = 2.0,):
-        return lambda mr, mf, roi : tf.math.multiply_no_nan(focal_loss(y_true=tf.math.multiply_no_nan(mr, roi), y_pred=mf, alpha=alpha, gamma=gamma, from_logits=False, reduction='mean'), w_seg)
+    def get_seg_loss_fn(
+        self,
+        w_seg: float = 1.0,
+        alpha: float = 0.75,
+        gamma: float = 2.0
+    ) -> Callable[[tf.Tensor, tf.Tensor, tf.Tensor], tf.Tensor]:
+        """
+        Create a segmentation loss function that combines focal loss, binary cross-entropy loss, and Dice loss.
+
+        Parameters:
+        - w_seg (float): Weight factor for the combined segmentation loss. Default is 1.0.
+        - alpha (float): Focal loss parameter for controlling the importance of false negatives. Default is 0.75.
+        - gamma (float): Focal loss focusing parameter. Default is 2.0.
+
+        Returns:
+        - Callable: A function that computes the combined segmentation loss given the ground truth and predictions.
+        """
+
+        def seg_loss_fn(mr: tf.Tensor, mf: tf.Tensor, roi: tf.Tensor) -> tf.Tensor:
+            """
+            Compute the segmentation loss by applying the specified losses to the given inputs.
+
+            Parameters:
+            - mr (tf.Tensor): Ground truth mask tensor with shape [batch_size, height, width, channels].
+            - mf (tf.Tensor): Predicted mask tensor with shape [batch_size, height, width, channels].
+            - roi (tf.Tensor): Region of interest tensor with shape [batch_size, height, width, channels] used to mask the loss.
+
+            Returns:
+            - tf.Tensor: The computed segmentation loss.
+            """
+            # Multiply the ground truth by the region of interest (roi)
+            y_true = tf.math.multiply_no_nan(mr, roi)
+
+            # Compute individual losses
+            focal_loss_value = focal_loss(y_true=y_true, y_pred=mf, alpha=alpha, gamma=gamma, from_logits=False, reduction='mean')
+            bce_loss_value = bce_loss(y_true=y_true, y_pred=mf, from_logits=False, reduction='mean')
+            dice_loss_value = dice_loss(y_true=y_true, y_pred=mf, smooth=1.0, from_logits=False, reduction='mean')
+
+            # Combine losses with weight and return the final loss
+            total_loss = tf.math.multiply_no_nan(tf.math.add_n([focal_loss_value, bce_loss_value, dice_loss_value]), w_seg)
+
+            return total_loss
+
+        return lambda mr, mf, roi: seg_loss_fn(mr, mf, roi)
 
 
     def get_image_type(self):

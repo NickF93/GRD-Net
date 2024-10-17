@@ -6,7 +6,8 @@ from .loss import (
     ssim_rgb_loss,
     bce_loss,
     focal_loss,
-    cosine_similarity_loss
+    cosine_similarity_loss,
+    dice_loss
 )
 
 __all__ = [
@@ -18,4 +19,5 @@ __all__ = [
     'bce_loss',
     'focal_loss',
     'cosine_similarity_loss',
+    'dice_loss',
 ]
