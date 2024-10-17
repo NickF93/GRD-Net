@@ -533,9 +533,9 @@ class Trainer:
 
     def get_adv_loss_fn(self, w_adv=1.0):
         if self.net_type == NetType.GRD:
-            return lambda f_real, f_fake : tf.math.multiply_no_nan(mse_loss(f_real, f_fake, reduction='mean'), w_adv)
+            return lambda f_real, f_fake : tf.math.multiply_no_nan(cosine_similarity_loss(f_real, f_fake, reduction='mean'), w_adv)
         elif self.net_type == NetType.ResGAN:
-            return lambda f_real, f_fake : tf.math.multiply_no_nan(mse_loss(f_real, f_fake, reduction='mean'), w_adv)
+            return lambda f_real, f_fake : tf.math.multiply_no_nan(cosine_similarity_loss(f_real, f_fake, reduction='mean'), w_adv)
         else:
             raise ValueError('NetType error')
 
@@ -554,7 +554,7 @@ class Trainer:
         if self.net_type == NetType.GRD:
             return lambda zr, zf : tf.math.multiply_no_nan(mse_loss(zr, zf, reduction='mean'), w_lat)
         elif self.net_type == NetType.ResGAN:
-            return lambda zr, zf : tf.math.multiply_no_nan(cosine_similarity_loss(zr, zf, reduction='mean'), w_lat)
+            return lambda zr, zf : tf.math.multiply_no_nan(mse_loss(zr, zf, reduction='mean'), w_lat)
         else:
             raise ValueError('NetType error')
 
