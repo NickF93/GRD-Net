@@ -420,7 +420,7 @@ class Trainer:
                     averaged_loss_str_dict[loss] = f'{(loss_val / np.float64(idx + 1)):.4f}'
                     averaged_loss_dict[loss] = (loss_val / np.float64(idx + 1))
                 averaged_loss_str_dict['lr'] = f'{float(self.g_optimizer.lr.numpy()):.4f}'
-                averaged_loss_dict['lr'] = (float(self.g_optimizer.lr.numpy()))
+                averaged_loss_dict['lr'] = (float(self.generator_optimizer.lr.numpy()))
                 if emanager is not None:
                     emanager.log_metrics(averaged_loss_dict, step=self.cumulative_train_step)
                 self.cumulative_train_step += 1
