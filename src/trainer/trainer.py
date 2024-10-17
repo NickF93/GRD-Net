@@ -423,7 +423,7 @@ class Trainer:
                 loss_dict = self.train_step(inputs)
                 xf = loss_dict['Xf']
                 mf = loss_dict['Mf']
-                mf = tf.nn.avg_pool2d(input=mf, ksize=5, strides=1, padding='VALID')
+                mf = tf.nn.avg_pool2d(input=mf, ksize=5, strides=1, padding='SAME')
 
                 assert image.shape[0] == xn.shape[0], 'Shape mismatch'
                 assert image.shape[0] == n.shape[0], 'Shape mismatch'
