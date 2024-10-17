@@ -623,7 +623,7 @@ class Perlin:
         # Generate a random beta for each image in the batch, with values between 0.2 and 1.0
         betas = tf.random.uniform(
             shape=[batch_size, 1, 1, 1],  # Shape to broadcast over height, width, and channels
-            minval=0.2,
+            minval=0.5,
             maxval=1.0,
             dtype=tf.float32
         )

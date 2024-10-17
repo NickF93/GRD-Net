@@ -7,8 +7,6 @@ import tensorflow as tf
 from tensorflow import keras
 import mlflow
 import mlflow.tensorflow
-from mlflow.models.signature import ModelSignature
-from mlflow.types import Schema, TensorSpec
 import matplotlib.pyplot as plt
 import numpy as np
 
@@ -74,7 +72,7 @@ class ExperimentManager:
             # Log to MLflow
             mlflow.log_metric(metric_name, value, step)
 
-        print(f"Metrics logged for step {step}.")
+        #print(f"Metrics logged for step {step}.")
 
     def log_params(self, params: Dict[str, Any]) -> None:
         """
@@ -85,7 +83,7 @@ class ExperimentManager:
         """
         for param_name, value in params.items():
             mlflow.log_param(param_name, value)
-        print(f"Parameters logged: {params}")
+        #print(f"Parameters logged: {params}")
 
     def log_image(self, image: np.ndarray, tag: str, step: int, image_name: str = "image.png") -> None:
         """
@@ -102,12 +100,12 @@ class ExperimentManager:
         if self.writer is not None:
             with self.writer.as_default():
                 tf.summary.image(tag, np.expand_dims(image, 0), step=step)
-        print(f"Image logged to TensorBoard with tag '{tag}'.")
+        #print(f"Image logged to TensorBoard with tag '{tag}'.")
 
         # Save the image locally and log it to MLflow as an artifact
         plt.imsave(image_name, image)
         mlflow.log_artifact(image_name)
-        print(f"Image logged to MLflow as artifact '{image_name}'.")
+        #print(f"Image logged to MLflow as artifact '{image_name}'.")
         os.remove(image_name)  # Clean up the saved file
 
     def save_model(self,
@@ -140,22 +138,22 @@ class ExperimentManager:
             tf_model_path = os.path.join(tmp_dir, f"{model_name}")
             model.save(tf_model_path)
             mlflow.tensorflow.log_model(tf_model_path, "model_tf_savedmodel")
-            print(f"Model saved in TensorFlow SavedModel format at {tf_model_path}")
+            #print(f"Model saved in TensorFlow SavedModel format at {tf_model_path}")
         
         if save_h5_format:
             h5_model_path = os.path.join(tmp_dir, f"{model_name}.h5")
             model.save(h5_model_path, save_format='h5')
             mlflow.log_artifact(h5_model_path)
-            print(f"Model saved in H5 format at {h5_model_path}")
+            #print(f"Model saved in H5 format at {h5_model_path}")
 
         # Clean up saved models after logging them to MLflow
         if save_tf_format and os.path.exists(tf_model_path):
             os.rmdir(tf_model_path)
-            print(f"Temporary TensorFlow SavedModel directory {tf_model_path} deleted.")
+            #print(f"Temporary TensorFlow SavedModel directory {tf_model_path} deleted.")
 
         if save_h5_format and os.path.exists(h5_model_path):
             os.remove(h5_model_path)
-            print(f"Temporary H5 model file {h5_model_path} deleted.")
+            #print(f"Temporary H5 model file {h5_model_path} deleted.")
 
     def _setup_experiment(self) -> None:
         """
@@ -163,7 +161,7 @@ class ExperimentManager:
         and connecting to MLflow (either remote or local).
         """
         # Setup TensorBoard callback
-        print(f"TensorBoard callback created. Logs will be saved in {self._tensorboard_logdir}.")
+        #print(f"TensorBoard callback created. Logs will be saved in {self._tensorboard_logdir}.")
 
         self.writer = tf.summary.create_file_writer(self._tensorboard_logdir)
         if self.writer is not None:
@@ -173,7 +171,7 @@ class ExperimentManager:
         # Setup MLflow experiment and start a run
         mlflow.set_experiment(self._experiment_name)
         self._run = mlflow.start_run()
-        print(f"MLflow run started with ID: {self._run.info.run_id}")
+        #print(f"MLflow run started with ID: {self._run.info.run_id}")
 
     def _check_mlflow_server(self) -> bool:
         """
@@ -187,8 +185,8 @@ class ExperimentManager:
             else:
                 print(f"MLflow server responded with status code {response.status_code}. Switching to local logging.")
                 mlflow.set_tracking_uri('file:' + str(self._mlflow_alt_logdir))  # Switch to local logging
-        except requests.ConnectionError:
-            print("MLflow server is offline. Switching to local logging.")
+        except Exception as ex:
+            print(f"MLflow server is offline. Switching to local logging. [{ex}]")
             mlflow.set_tracking_uri('file:' + str(self._mlflow_alt_logdir))  # Switch to local logging
 
     def _close_experiment(self) -> None:
@@ -197,4 +195,4 @@ class ExperimentManager:
         """
         if self._run:
             mlflow.end_run()
-            print("MLflow run ended.")
+            #print("MLflow run ended.")

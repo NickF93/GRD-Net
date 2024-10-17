@@ -1,6 +1,6 @@
 import os
 import datetime
-from typing import Tuple, Optional, Union
+from typing import Tuple, Optional, Union, List
 from enum import Enum
 import tempfile
 import logging
@@ -75,7 +75,7 @@ class Trainer:
                 t_mul: float = 2.0,
                 m_mul: float = 1.0,
                 alpha: float = 1e-6,
-                log_path: str = tempfile.gettempdir(),
+                log_path: str = os.path.join(tempfile.gettempdir(), 'ml_logs'),
                 mlflow_uri: str = 'localhost:5000'
             ):
         self.name = str(name)
@@ -93,6 +93,7 @@ class Trainer:
         self.mask_suffix: str = mask_suffix
         self.aug_pipe: AugmentPipe = AugmentPipe(random_90_rotation=random_90_rotation, rotation_angle=rotation_angle, flip_mode=flip_mode, translation_range=translation_range, zoom_range=zoom_range)
         self.log_path: str = log_path
+        self.mlflow_uri = mlflow_uri
 
         self.train_and_validation_path: str = os.path.realpath(train_and_validation_path)
         assert os.path.exists(self.train_and_validation_path) and os.path.isdir(self.train_and_validation_path), 'train and validation path must exist and must be a directory'
@@ -209,9 +210,23 @@ class Trainer:
         self.discriminator_optimizer = tf.keras.optimizers.Adam(learning_rate=discriminator_lr_policy, beta_1=0.9, beta_2=0.999, epsilon=1e-07, amsgrad=False)
         self.segmentator_optimizer = tf.keras.optimizers.Adam(learning_rate=segmentator_lr_policy, beta_1=0.9, beta_2=0.999, epsilon=1e-07, amsgrad=False)
 
-        self.logdir = self.log_path + '/' + str(self.name) + '_' + str(datetime.datetime.now().strftime("%Y%m%d-%H%M%S-%f_%A-%W-%B"))
-        self.manager: ExperimentManager = ExperimentManager(mlflow_uri=mlflow_uri, experiment_name=self.name, tensorboard_logdir=self.logdir + os.sep + 'tensorboard', mlflow_alt_logdir=self.logdir + os.sep + 'mlflow')
+        datetime_dir = str(datetime.datetime.now().strftime("%Y%m%d-%H%M%S-%f_%A-%W-%B"))
+        self.tb_logdir = os.path.join(self.log_path, str(self.name), 'TensorBoard', datetime_dir)
+        self.mf_logdir = os.path.join(self.log_path, str(self.name), 'MLFlow', datetime_dir)
+        self.im_logdir = os.path.join(self.log_path, str(self.name), 'Images', datetime_dir)
+        self.dt_logdir = os.path.join(self.log_path, str(self.name), 'Data', datetime_dir)
+        self.gn_logdir = os.path.join(self.log_path, str(self.name), 'General', datetime_dir)
 
+        for dir in (self.tb_logdir, self.mf_logdir, self.im_logdir, self.dt_logdir, self.gn_logdir):
+            if os.path.exists(dir):
+                if os.path.isdir(dir):
+                    pass
+                else:
+                    os.remove(dir)
+                    os.makedirs(dir, exist_ok=True)
+            else:
+                os.makedirs(dir, exist_ok=True)
+        
         logger.info('Building models...')
         self.encoder_model: tf.keras.models.Model = None
         self.autencoder_model: tf.keras.models.Model = None
@@ -240,6 +255,9 @@ class Trainer:
         self.latent_loss = self.get_lat_loss_fn(w_lat=1.0)
         self.discriminator_loss = self.get_disc_loss_fn()
         self.segmentator_loss = self.get_seg_loss_fn(w_seg=1.0, alpha=0.25, gamma=2.0)
+
+        self.cumulative_epoch: int = 0
+        self.cumulative_train_step: int = 0
     
 
     @tf.function(reduce_retracing=True)
@@ -356,7 +374,7 @@ class Trainer:
                 'segmentator_loss': segmentator_loss}
     
 
-    def train_loop(self):
+    def train_loop(self, epoch: int, emanager: Optional[ExperimentManager] = None):
         cumulative_loss_dict = {}
 
         with tqdm(iterable=self.ds_training_path, leave=True, desc='Train', unit='batch') as pbar:
@@ -366,14 +384,45 @@ class Trainer:
                 xa, xn, n, m, beta = self.perlin.perlin_noise_batch(image)
                 inputs = (xa, xn, n, m, roi, beta)
                 loss_dict = self.train_step(inputs)
+                xf = loss_dict['Xf']
+                mf = loss_dict['Mf']
+
+                assert xa.shape[0] == xn.shape[0], 'Shape mismatch'
+                assert xa.shape[0] == n.shape[0], 'Shape mismatch'
+                assert xa.shape[0] == m.shape[0], 'Shape mismatch'
+                assert xa.shape[0] == roi.shape[0], 'Shape mismatch'
+                assert xa.shape[0] == beta.shape[0], 'Shape mismatch'
+                assert xa.shape[0] == xf.shape[0], 'Shape mismatch'
+                assert xa.shape[0] == mf.shape[0], 'Shape mismatch'
+                
+                if self.epochs > 4 and self.cumulative_train_step % 1000 == 0:
+                    to_concat = (xa, xn, n, m, roi, xf, mf)
+                    tmp_concat: List[tf.Tensor] = []
+                    for con in to_concat:
+                        con = con[:, tf.newaxis, ...]
+                        if con.shape[-1] == 1:
+                            con = tf.image.grayscale_to_rgb(con)
+                        tmp_concat.append(con)
+                    tmp_concat_tensor = tf.concat(tmp_concat, axis=1)
+                    del tmp_concat, to_concat
+                    tmp_concat_tensor = tf.transpose(tmp_concat_tensor, perm=(1, 0, 2, 3, 4))
+                    for g_img_id, tensor0 in enumerate(tmp_concat_tensor):
+                        for b_img_id, img_tmp in enumerate(tensor0):
+                            emanager.log_image(image=img_tmp.numpy(), tag=f'bid_{b_img_id}_gid_{g_img_id}', step=self.cumulative_train_step)
+
                 for loss, loss_val in loss_dict['losses'].items():
                     if loss not in cumulative_loss_dict:
                         cumulative_loss_dict[loss] = 0.0
                     cumulative_loss_dict[loss] += loss_val.numpy().astype(np.float64)
+                averaged_loss_str_dict = {}
                 averaged_loss_dict = {}
                 for loss, loss_val in cumulative_loss_dict.items():
-                    averaged_loss_dict[loss] = f'{(loss_val / np.float64(idx + 1)):.4f}'
-                pbar.set_postfix(averaged_loss_dict)
+                    averaged_loss_str_dict[loss] = f'{(loss_val / np.float64(idx + 1)):.4f}'
+                    averaged_loss_dict[loss] = (loss_val / np.float64(idx + 1))
+                if emanager is not None:
+                    emanager.log_metrics(averaged_loss_dict, step=self.cumulative_train_step)
+                self.cumulative_train_step += 1
+                pbar.set_postfix(averaged_loss_str_dict)
 
 
                 #self.log_inputs((image, roi))
@@ -384,12 +433,18 @@ class Trainer:
 
 
     def train(self):
-        for epoch in range(self.epochs):
-            logger.info('Epoch %d / %d', epoch + 1, self.epochs)
+        self.cumulative_epoch = 0
+        self.cumulative_train_step = 0
 
-            self.perlin.pre_generate_noise(epoch=epoch, min_area=20)
+        with ExperimentManager(mlflow_uri=self.mlflow_uri, experiment_name=self.name, tensorboard_logdir=self.tb_logdir, mlflow_alt_logdir=self.mf_logdir) as emanager:
+            for epoch in range(self.epochs):
+                logger.info('Epoch %d / %d', epoch + 1, self.epochs)
 
-            self.train_loop()
+                self.perlin.pre_generate_noise(epoch=epoch, min_area=20)
+
+                self.train_loop(epoch=epoch, emanager=emanager)
+
+                self.cumulative_epoch += 1
     
     
     def log_inputs(self, inputs):
