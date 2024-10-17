@@ -382,19 +382,30 @@ class Trainer:
             for idx, inputs in enumerate(pbar):
                 image, roi = self.augment_inputs(inputs)
                 image_gaussian = self.superimpose_gaussian_noise(image, 0.01)
-                xa, xn, n, m, beta = self.perlin.perlin_noise_batch(image_gaussian)
+                _, xn, n, m, beta = self.perlin.perlin_noise_batch(image_gaussian)
 
+                imagez = image
+                xnz = imagez
                 mz = tf.zeros_like(m)
                 nz = tf.zeros_like(n)
+                roiz = roi
                 betaz = tf.zeros_like(beta)
 
-                image = image[:, tf.newaxis, ...]  # image without noise
-                xnz = image  # image with noise (without any superimposed niose)
+                imagez = imagez[:, tf.newaxis, ...]  # image without noise
+                xnz = xnz[:, tf.newaxis, ...]  # image with noise (without any superimposed niose)
                 mz = mz[:, tf.newaxis, ...]  # fake noise map, all zeros
+                nz = nz[:, tf.newaxis, ...]  # fake noise map, all zeros
                 roiz = roiz[:, tf.newaxis, ...]  # copy of roi
                 betaz = betaz[:, tf.newaxis, ...]  # fake betas, all zeros
 
-                image = tf.concat((image, image), axis=1)
+                image = image[:, tf.newaxis, ...]  # image without noise
+                xn = xn[:, tf.newaxis, ...]  # image with noise (without any superimposed niose)
+                m = m[:, tf.newaxis, ...]  # fake noise map, all zeros
+                n = n[:, tf.newaxis, ...]  # fake noise map, all zeros
+                roi = roi[:, tf.newaxis, ...]  # copy of roi
+                beta = beta[:, tf.newaxis, ...]  # fake betas, all zeros
+
+                image = tf.concat((image, imagez), axis=1)
                 xn = tf.concat((xn, xnz), axis=1)
                 n = tf.concat((n, nz), axis=1)
                 m = tf.concat((m, mz), axis=1)
@@ -413,16 +424,16 @@ class Trainer:
                 xf = loss_dict['Xf']
                 mf = loss_dict['Mf']
 
-                assert xa.shape[0] == xn.shape[0], 'Shape mismatch'
-                assert xa.shape[0] == n.shape[0], 'Shape mismatch'
-                assert xa.shape[0] == m.shape[0], 'Shape mismatch'
-                assert xa.shape[0] == roi.shape[0], 'Shape mismatch'
-                assert xa.shape[0] == beta.shape[0], 'Shape mismatch'
-                assert xa.shape[0] == xf.shape[0], 'Shape mismatch'
-                assert xa.shape[0] == mf.shape[0], 'Shape mismatch'
+                assert image.shape[0] == xn.shape[0], 'Shape mismatch'
+                assert image.shape[0] == n.shape[0], 'Shape mismatch'
+                assert image.shape[0] == m.shape[0], 'Shape mismatch'
+                assert image.shape[0] == roi.shape[0], 'Shape mismatch'
+                assert image.shape[0] == beta.shape[0], 'Shape mismatch'
+                assert image.shape[0] == xf.shape[0], 'Shape mismatch'
+                assert image.shape[0] == mf.shape[0], 'Shape mismatch'
                 
                 if self.epochs > 4 and self.cumulative_train_step % 1000 == 0:
-                    to_concat = (xa, xn, n, m, roi, xf, mf)
+                    to_concat = (image, xn, n, m, roi, xf, mf)
                     tmp_concat: List[tf.Tensor] = []
                     for con in to_concat:
                         con = con[:, tf.newaxis, ...]
