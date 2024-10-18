@@ -436,7 +436,18 @@ class Trainer:
         )
 
     @tf.function(
-        autograph=True, reduce_retracing=True, jit_compile=True
+        input_signature=[
+            (
+                tf.TensorSpec(shape=None, dtype=tf.float32),  # xr
+                tf.TensorSpec(shape=None, dtype=tf.float32),  # xn
+                tf.TensorSpec(shape=None, dtype=tf.float32),  # n
+                tf.TensorSpec(shape=None, dtype=tf.float32),  # mr
+                tf.TensorSpec(shape=None, dtype=tf.float32),  # r
+                tf.TensorSpec(shape=None, dtype=tf.float32),  # beta
+            )
+        ],
+        autograph=True,
+        reduce_retracing=True,
     )
     def train_step(
         self,
