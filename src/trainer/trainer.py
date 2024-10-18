@@ -423,7 +423,10 @@ class Trainer:
                 loss_dict = self.train_step(inputs)
                 xf = loss_dict['Xf']
                 mf = loss_dict['Mf']
-                mf = tf.nn.avg_pool2d(input=mf, ksize=5, strides=1, padding='SAME')
+                mfp = tf.nn.avg_pool2d(input=mf, ksize=3, strides=1, padding='SAME')
+                mf_max = tf.reduce_max(mf)
+                mf_min = tf.reduce_min(mf)
+                mfn = ((mf - mf_min) / (mf_max - mf_min))
 
                 assert image.shape[0] == xn.shape[0], 'Shape mismatch'
                 assert image.shape[0] == n.shape[0], 'Shape mismatch'
@@ -434,7 +437,7 @@ class Trainer:
                 assert image.shape[0] == mf.shape[0], 'Shape mismatch'
                 
                 if self.epochs > 4 and self.cumulative_train_step % 1000 == 0:
-                    to_concat = (image, xn, n, m, roi, xf, mf)
+                    to_concat = (image, xn, n, m, roi, xf, mf, mfp, mfn)
                     tmp_concat: List[tf.Tensor] = []
                     for con in to_concat:
                         con = con[:, tf.newaxis, ...]
