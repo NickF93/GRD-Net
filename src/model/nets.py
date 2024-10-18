@@ -11,6 +11,7 @@ from enum import Enum
 
 import tensorflow as tf
 from ._ae import ResnetAE
+from ._unet import UNet
 
 class BottleNeckType(Enum):
     """
@@ -88,9 +89,7 @@ def build_res_ae(
     # If initial padding is specified, apply padding and a convolutional layer
     if initial_padding > 0:
         # Set the filter size for initial padding convolution
-        if initial_padding_filters > 0:
-            initial_padding_filters = initial_padding_filters
-        else:
+        if initial_padding_filters <= 0:
             initial_padding_filters = channels
         
         # Apply padding followed by a convolution and activation
@@ -122,7 +121,7 @@ def build_res_ae(
     if bottleneck_type == BottleNeckType.DENSE:
         x = tf.keras.layers.Dense(latent_size, name=f'encoder0_dense_bottleneck_nz{latent_size}')(x)
     else:
-        x = tf.keras.layers.Conv2D(latent_size, 4, strides=1, use_bias=False, padding='valid', name=f'encoder0_conv_bottleneck_nz{latent_size}')(x)
+        x = tf.keras.layers.Conv2D(latent_size, 4, strides=1, use_bias=use_bias, padding='valid', name=f'encoder0_conv_bottleneck_nz{latent_size}')(x)
         bf_shape = x.get_shape()[1:]
         x = tf.keras.layers.Flatten(name='encoder0_bottleneck_flat')(x)
 
@@ -133,14 +132,13 @@ def build_res_ae(
 
     # Decoder bottleneck
     decoder0_input = x
-    encoder0_out_layer = decoder0_input
 
     if bottleneck_type == BottleNeckType.DENSE:
         x = decoder0_input
     else:
         # Reshape if the bottleneck is convolutional
         x = tf.keras.layers.Reshape(bf_shape, name='decoder0_bottleneck_reshape')(decoder0_input)
-        x = tf.keras.layers.Conv2DTranspose(enc_out.shape[-1], 4, strides=1, use_bias=False, padding='valid', name=f'decoder0_bottleneck_nz{latent_size}')(x)
+        x = tf.keras.layers.Conv2DTranspose(enc_out.shape[-1], 4, strides=1, use_bias=use_bias, padding='valid', name=f'decoder0_bottleneck_nz{latent_size}')(x)
 
     # If using a dense bottleneck, reshape the output
     if bottleneck_type == BottleNeckType.DENSE:
@@ -317,9 +315,7 @@ def build_res_unet(
     # If initial padding is specified, apply padding and a convolutional layer
     if initial_padding > 0:
         # Set the filter size for initial padding convolution
-        if initial_padding_filters > 0:
-            initial_padding_filters = initial_padding_filters
-        else:
+        if initial_padding_filters <= 0:
             initial_padding_filters = channels
         
         # Apply padding followed by a convolution and activation
@@ -348,59 +344,62 @@ def build_res_unet(
 
     x = tf.keras.layers.Concatenate(axis=-1, name=f'concat_inputs_{name}')([xo, xf])
 
-    # Create an instance of the ResnetAE class
-    rae_obj = ResnetAE(init_features=init_filters, channels=channels, name=f'rae_{name}', net_shape=(2, 2, 2, 2, 2))
+    if residual:
+        # Create an instance of the ResnetAE class
+        rae_obj = ResnetAE(init_features=init_filters, channels=channels, name=f'rae_{name}', net_shape=(2, 2, 2, 2, 2), bias=use_bias)
 
-    # Generate the encoder model and retrieve its output
-    _, enc_out, skips = rae_obj.gen_encoder(inputs=x, name='encoder', wide=wide)
+        # Generate the encoder model and retrieve its output
+        _, enc_out, skips = rae_obj.gen_encoder(inputs=x, name='encoder', wide=wide)
 
-    x = enc_out
+        x = enc_out
 
-    x = tf.keras.layers.Conv2D(latent_size, 4, strides=1, use_bias=False, padding='valid', name=f'encoder0_conv_bottleneck_nz{latent_size}')(x)
-    bf_shape = x.get_shape()[1:]
-    x = tf.keras.layers.Flatten(name='encoder0_bottleneck_flat')(x)
+        x = tf.keras.layers.Conv2D(latent_size, 4, strides=1, use_bias=use_bias, padding='valid', name=f'encoder0_conv_bottleneck_nz{latent_size}')(x)
+        bf_shape = x.get_shape()[1:]
+        x = tf.keras.layers.Flatten(name='encoder0_bottleneck_flat')(x)
 
-    latent_space = x
-
-    # Decoder bottleneck
-    decoder0_input = x
-    encoder0_out_layer = decoder0_input
-
-    # Reshape if the bottleneck is convolutional
-    x = tf.keras.layers.Reshape(bf_shape, name='decoder0_bottleneck_reshape')(decoder0_input)
-    x = tf.keras.layers.Conv2DTranspose(enc_out.shape[-1], 4, strides=1, use_bias=False, padding='valid', name=f'decoder0_bottleneck_nz{latent_size}')(x)
-
-    # If initial padding was applied, adjust the final activation accordingly
-    last_act = True
-    if initial_padding > 0:
-        last_act = False
-
-    # Generate the decoder model and retrieve its output
-    if len(skips) > num_skips and num_skips > 0:
-        skips = skips[-num_skips:]
-    tmp_skips = []
-    for i, s in enumerate(skips):
-        _, _, _, c = tf.keras.backend.int_shape(s)
-        s = tf.keras.layers.Conv2D(c // 4, 4, strides=1, use_bias=False, padding='valid', name=f'encoder0_conv_bottleneck_nz{latent_size}_{i}')(s)
-        bf_shape_s = s.get_shape()[1:]
-        s = tf.keras.layers.Flatten(name=f'encoder0_bottleneck_flat_{i}')(s)
+        # Decoder bottleneck
+        decoder0_input = x
 
         # Reshape if the bottleneck is convolutional
-        s = tf.keras.layers.Reshape(bf_shape_s, name=f'decoder0_bottleneck_reshape_{i}')(s)
-        s = tf.keras.layers.Conv2DTranspose(c, 4, strides=1, use_bias=False, padding='valid', name=f'decoder0_bottleneck_nz{latent_size}_{i}')(s)
-        tmp_skips.append(s)
-    skips = tmp_skips
-    
-    _, decoder0_residual_output = rae_obj.gen_decoder(inputs=x, last_act=last_act, name='decoder0', wide=wide, skips=skips, override_channels=1)
+        x = tf.keras.layers.Reshape(bf_shape, name='decoder0_bottleneck_reshape')(decoder0_input)
+        x = tf.keras.layers.Conv2DTranspose(enc_out.shape[-1], 4, strides=1, use_bias=use_bias, padding='valid', name=f'decoder0_bottleneck_nz{latent_size}')(x)
 
-    # If initial padding was applied, remove it from the final output
-    if initial_padding > 0:
-        post_x = tf.keras.layers.Conv2DTranspose(filters=1, kernel_size=int((initial_padding * 2) + 1), strides=1, padding='valid', use_bias=use_bias)(decoder0_residual_output)
-        post_x = tf.keras.layers.Activation(activation=tf.nn.sigmoid)(post_x)
-        post_x = tf.keras.layers.Cropping2D(cropping=initial_padding)(post_x)
-        outputs = post_x
+        # If initial padding was applied, adjust the final activation accordingly
+        last_act = True
+        if initial_padding > 0:
+            last_act = False
+
+        # Generate the decoder model and retrieve its output
+        if len(skips) > num_skips and num_skips > 0:
+            skips = skips[-num_skips:]
+        tmp_skips = []
+        for i, s in enumerate(skips):
+            _, _, _, c = tf.keras.backend.int_shape(s)
+            s = tf.keras.layers.Conv2D(c // 4, 4, strides=1, use_bias=use_bias, padding='valid', name=f'encoder0_conv_bottleneck_nz{latent_size}_{i}')(s)
+            bf_shape_s = s.get_shape()[1:]
+            s = tf.keras.layers.Flatten(name=f'encoder0_bottleneck_flat_{i}')(s)
+
+            # Reshape if the bottleneck is convolutional
+            s = tf.keras.layers.Reshape(bf_shape_s, name=f'decoder0_bottleneck_reshape_{i}')(s)
+            s = tf.keras.layers.Conv2DTranspose(c, 4, strides=1, use_bias=use_bias, padding='valid', name=f'decoder0_bottleneck_nz{latent_size}_{i}')(s)
+            tmp_skips.append(s)
+        skips = tmp_skips
+        
+        _, decoder0_residual_output = rae_obj.gen_decoder(inputs=x, last_act=last_act, name='decoder0', wide=wide, skips=skips, override_channels=1)
+
+        # If initial padding was applied, remove it from the final output
+        if initial_padding > 0:
+            post_x = tf.keras.layers.Conv2DTranspose(filters=1, kernel_size=int((initial_padding * 2) + 1), strides=1, padding='valid', use_bias=use_bias)(decoder0_residual_output)
+            post_x = tf.keras.layers.Activation(activation=tf.nn.sigmoid)(post_x)
+            post_x = tf.keras.layers.Cropping2D(cropping=initial_padding)(post_x)
+            outputs = post_x
+        else:
+            outputs = decoder0_residual_output
+
     else:
-        outputs = decoder0_residual_output
+        unet: UNet = UNet(init_features=init_filters, channels=1, bias=use_bias, bn=True, name=f'unae_{name}')
+        _, den0_outputs = unet.generate_ds_encoder(x)
+        _, outputs = unet.generate_ds_decoder(den0_outputs)
 
     # Create the full unet model
     unet_model = tf.keras.models.Model(inputs=(inputs,), outputs=(outputs,), name=f'unet_{name}')

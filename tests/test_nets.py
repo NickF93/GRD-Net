@@ -10,7 +10,7 @@ import numpy as np
 from PIL import Image
 from src.data import image_dataset_from_directory
 from src.loss import huber_loss, mse_loss, mae_loss, ssim_loss, bce_loss, focal_loss
-from src.model import BottleNeckType, build_res_ae
+from src.model import BottleNeckType, build_res_ae, build_res_disc, build_res_unet
 
 # Configure logging to debug level
 logging.basicConfig(level=logging.DEBUG)
@@ -125,13 +125,16 @@ def test_create_dataset(create_tmp_dataset: str) -> None:
                 f"Expected all pixels in the mask to be 255 for 'bad' class, got {np.unique(mask.numpy())}"
             )
 
+
 @pytest.fixture
 def y_true():
     return tf.random.normal((2, 16, 16, 3))
 
+
 @pytest.fixture
 def y_pred():
     return tf.random.normal((2, 16, 16, 3))
+
 
 def test_huber_loss_mean(y_true, y_pred):
     delta = 1.0
@@ -144,6 +147,7 @@ def test_huber_loss_mean(y_true, y_pred):
 
     assert tf.abs(custom_loss - tf_loss).numpy() < 1e-6
 
+
 def test_mse_loss_mean(y_true, y_pred):
     # Custom MSE loss with 'mean' reduction
     custom_loss = mse_loss(y_true, y_pred, reduction='mean')
@@ -153,6 +157,7 @@ def test_mse_loss_mean(y_true, y_pred):
 
     assert tf.abs(custom_loss - tf_loss).numpy() < 1e-6
 
+
 def test_mae_loss_mean(y_true, y_pred):
     # Custom MAE loss with 'mean' reduction
     custom_loss = mae_loss(y_true, y_pred, reduction='mean')
@@ -161,6 +166,7 @@ def test_mae_loss_mean(y_true, y_pred):
     tf_loss = tf.reduce_mean(tf.keras.losses.MeanAbsoluteError(reduction=tf.keras.losses.Reduction.NONE)(tf.reshape(y_true, (*(y_true.shape), 1)), tf.reshape(y_pred, (*(y_pred.shape), 1))))
 
     assert tf.abs(custom_loss - tf_loss).numpy() < 1e-6
+
 
 def test_ssim_loss_mean(y_true, y_pred):
     """
@@ -174,6 +180,7 @@ def test_ssim_loss_mean(y_true, y_pred):
     tf_loss = tf.reduce_mean(1 - tf_ssim)
 
     assert tf.abs(custom_loss - tf_loss).numpy() < 1e-6
+
 
 def test_bce_loss_mean(y_true, y_pred):
     """
@@ -251,7 +258,7 @@ def test_drae():
     encoder_model: tf.keras.models.Model
     autencoder_model: tf.keras.models.Model
     generator_model: tf.keras.models.Model
-    encoder_model, autencoder_model, generator_model = build_res_ae(img_height = img_size, channels = channels, bottleneck_type = BottleNeckType.DENSE, initial_padding=10, initial_padding_filters=64)
+    encoder_model, autencoder_model, generator_model = build_res_ae(img_height = img_size, channels = channels, bottleneck_type = BottleNeckType.DENSE, init_filters=32, initial_padding=10, initial_padding_filters=64)
 
     tf.keras.utils.plot_model(
         encoder_model,
@@ -314,7 +321,7 @@ def test_crae():
     encoder_model: tf.keras.models.Model
     autencoder_model: tf.keras.models.Model
     generator_model: tf.keras.models.Model
-    encoder_model, autencoder_model, generator_model = build_res_ae(img_height = img_size, channels = channels, bottleneck_type = BottleNeckType.CONVOLUTIONAL, initial_padding=10, initial_padding_filters=64)
+    encoder_model, autencoder_model, generator_model = build_res_ae(img_height = img_size, channels = channels, bottleneck_type = BottleNeckType.CONVOLUTIONAL, init_filters=32, initial_padding=10, initial_padding_filters=64)
 
     tf.keras.utils.plot_model(
         encoder_model,
@@ -369,6 +376,99 @@ def test_crae():
     assert (None, img_size, img_size, channels) == tuple(generator_model.outputs[1].shape)
 
 
+def test_disc():
+    batch_size: int = 8
+    img_size: int = 224
+    channels: int = 3
+
+    disc_model: tf.keras.models.Model
+    disc_model = build_res_disc(img_height = img_size, channels = channels, init_filters=32, initial_padding=10, initial_padding_filters=64)
+
+    tf.keras.utils.plot_model(
+        disc_model,
+        to_file="/tmp/disc_model.png",
+        show_shapes=True,
+        show_dtype=True,
+        show_layer_names=True,
+        rankdir="TB",
+        expand_nested=True,
+        dpi=200,
+        show_layer_activations=True,
+        show_trainable=True,
+    )
+
+    x = tf.random.normal((batch_size, img_size, img_size, channels))
+    x = (x - tf.reduce_min(x)) / (tf.reduce_max(x) - tf.reduce_min(x))
+
+    disc_model(x)
+
+    assert tuple(disc_model.outputs[1].shape) == (None, 1)
+
+
+def test_res_unet():
+    batch_size: int = 8
+    img_size: int = 224
+    channels: int = 3
+
+    unet_model: tf.keras.models.Model
+    unet_model = build_res_unet(img_height = img_size, channels = channels, init_filters=32, skips=4, initial_padding=10, initial_padding_filters=64, residual=True)
+
+    tf.keras.utils.plot_model(
+        unet_model,
+        to_file="/tmp/res_unet_model.png",
+        show_shapes=True,
+        show_dtype=True,
+        show_layer_names=True,
+        rankdir="TB",
+        expand_nested=True,
+        dpi=200,
+        show_layer_activations=True,
+        show_trainable=True,
+    )
+
+    x1 = tf.random.normal((batch_size, img_size, img_size, channels))
+    x1 = (x1 - tf.reduce_min(x1)) / (tf.reduce_max(x1) - tf.reduce_min(x1))
+
+    x2 = tf.random.normal((batch_size, img_size, img_size, channels))
+    x2 = (x2 - tf.reduce_min(x2)) / (tf.reduce_max(x2) - tf.reduce_min(x2))
+
+    unet_model([x1, x2])
+
+    assert tuple(unet_model.outputs[0].shape) == (None, img_size, img_size, 1)
+
+
+def test_unet():
+    batch_size: int = 8
+    img_size: int = 224
+    channels: int = 3
+
+    unet_model: tf.keras.models.Model
+    unet_model = build_res_unet(img_height = img_size, channels = channels, init_filters=32, skips=4, initial_padding=10, initial_padding_filters=64, residual=False)
+
+    tf.keras.utils.plot_model(
+        unet_model,
+        to_file="/tmp/unet_model.png",
+        show_shapes=True,
+        show_dtype=True,
+        show_layer_names=True,
+        rankdir="TB",
+        expand_nested=True,
+        dpi=200,
+        show_layer_activations=True,
+        show_trainable=True,
+    )
+
+    x1 = tf.random.normal((batch_size, img_size, img_size, channels))
+    x1 = (x1 - tf.reduce_min(x1)) / (tf.reduce_max(x1) - tf.reduce_min(x1))
+
+    x2 = tf.random.normal((batch_size, img_size, img_size, channels))
+    x2 = (x2 - tf.reduce_min(x2)) / (tf.reduce_max(x2) - tf.reduce_min(x2))
+
+    unet_model([x1, x2])
+
+    assert tuple(unet_model.outputs[0].shape) == (None, img_size, img_size, 1)
+
+
 def test_wdrae():
     batch_size: int = 8
     img_size: int = 224
@@ -377,7 +477,7 @@ def test_wdrae():
     encoder_model: tf.keras.models.Model
     autencoder_model: tf.keras.models.Model
     generator_model: tf.keras.models.Model
-    encoder_model, autencoder_model, generator_model = build_res_ae(img_height = img_size, channels = channels, bottleneck_type = BottleNeckType.DENSE, initial_padding=10, initial_padding_filters=64, wide=2)
+    encoder_model, autencoder_model, generator_model = build_res_ae(img_height = img_size, channels = channels, bottleneck_type = BottleNeckType.DENSE, init_filters=32, initial_padding=10, initial_padding_filters=64, wide=2)
 
     tf.keras.utils.plot_model(
         encoder_model,
@@ -440,7 +540,7 @@ def test_wcrae():
     encoder_model: tf.keras.models.Model
     autencoder_model: tf.keras.models.Model
     generator_model: tf.keras.models.Model
-    encoder_model, autencoder_model, generator_model = build_res_ae(img_height = img_size, channels = channels, bottleneck_type = BottleNeckType.CONVOLUTIONAL, initial_padding=10, initial_padding_filters=64, wide=2)
+    encoder_model, autencoder_model, generator_model = build_res_ae(img_height = img_size, channels = channels, bottleneck_type = BottleNeckType.CONVOLUTIONAL, init_filters=32, initial_padding=10, initial_padding_filters=64, wide=2)
 
     tf.keras.utils.plot_model(
         encoder_model,
