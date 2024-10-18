@@ -637,14 +637,13 @@ class Trainer:
             # Compute individual losses
             focal_loss_value = focal_loss(y_true=y_true, y_pred=mf, alpha=alpha, gamma=gamma, from_logits=False, reduction='mean')
             bce_loss_value = bce_loss(y_true=y_true, y_pred=mf, from_logits=False, reduction='mean')
-            dice_loss_value = dice_loss(y_true=y_true, y_pred=mf, smooth=1.0, from_logits=False, reduction='mean')
 
             # Combine losses with weight and return the final loss
-            total_loss = tf.math.multiply_no_nan(tf.math.add_n([focal_loss_value, bce_loss_value, dice_loss_value]), w_seg)
+            total_loss = tf.math.multiply_no_nan(tf.math.add_n([focal_loss_value, bce_loss_value]), w_seg)
 
             return total_loss
 
-        return lambda mr, mf, roi: seg_loss_fn(mr, mf, roi)
+        return seg_loss_fn
 
 
     def get_image_type(self):
