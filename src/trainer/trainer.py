@@ -255,7 +255,7 @@ class Trainer:
         self.adversarial_loss = self.get_adv_loss_fn(w_adv=1.0)
         self.latent_loss = self.get_lat_loss_fn(w_lat=1.0)
         self.discriminator_loss = self.get_disc_loss_fn()
-        self.segmentator_loss = self.get_seg_loss_fn(w_seg=1.0, alpha=1.0, gamma=2.0)
+        self.segmentator_loss = self.get_seg_loss_fn(w_seg=1.0, alpha=0.75, gamma=2.0)
 
         self.cumulative_epoch: int = 0
         self.cumulative_train_step: int = 0
