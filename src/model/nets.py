@@ -251,7 +251,8 @@ def build_res_unet(
         initial_padding: int = -1,
         initial_padding_filters: int = -1,
         name: str = 'res_unet',
-        wide: int = 1
+        wide: int = 1,
+        residual: bool = True
     ) -> Tuple[tf.keras.Model, tf.keras.Model, tf.keras.Model]:
     """
     Creates a ResNet-based Autoencoder (ResnetAE) with customizable bottleneck type 
@@ -282,6 +283,8 @@ def build_res_unet(
         Name of the model. Default is 'res_ae'.
     wide : int, optional
         The widening factor for the residual network. Default is 1.
+    residual : bool, optional
+        If True build a Residual U-Net, else a classi DCNN-based U-Net
 
     Returns:
     --------
