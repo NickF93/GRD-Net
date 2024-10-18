@@ -1,6 +1,6 @@
 import os
 import datetime
-from typing import Tuple, Optional, Union, List, Callable
+from typing import Tuple, Optional, Union, List, Callable, Dict
 from enum import Enum
 import tempfile
 import logging
@@ -290,53 +290,248 @@ class Trainer:
         return noisy_batch
 
 
-    @tf.function(reduce_retracing=True)
-    def train_step(self, inputs):
+    def models_step(
+        self,
+        xn: tf.Tensor,
+        xr: tf.Tensor,
+        training: bool = False,
+    ) -> Tuple[
+        tf.Tensor,
+        tf.Tensor,
+        tf.Tensor,
+        tf.Tensor,
+        tf.Tensor,
+        tf.Tensor,
+        tf.Tensor,
+        tf.Tensor,
+        tf.Tensor,
+        tf.Tensor,
+    ]:
+        """
+        Performs a forward pass through the generator, discriminator, and segmentator models.
+
+        Parameters:
+            xn (tf.Tensor): Noisy input tensor to the generator model.
+            xr (tf.Tensor): Real input tensor to the discriminator and segmentator models.
+            training (bool, optional): Flag indicating whether the models are in training mode.
+                Defaults to False.
+
+        Returns:
+            Tuple[tf.Tensor, ...]: A tuple containing the following tensors:
+                xn (tf.Tensor): Noisy input tensor.
+                xr (tf.Tensor): Real input tensor.
+                zr (tf.Tensor): Latent representation from the generator for xn.
+                xf (tf.Tensor): Generated output from the generator model.
+                zf (tf.Tensor): Latent representation from the generator for xf.
+                fr (tf.Tensor): Features from the discriminator model for xr.
+                yr (tf.Tensor): Output from the discriminator model for xr.
+                ff (tf.Tensor): Features from the discriminator model for xf.
+                yf (tf.Tensor): Output from the discriminator model for xf.
+                mf (tf.Tensor): Output from the segmentator model.
+        """
+        # Pass noisy input through the generator model to obtain latent representations and generated output
+        zr, xf, zf = self.generator_model(xn, training=training)
+
+        # Pass real input through the discriminator model to obtain features and outputs
+        fr, yr = self.discriminator_model(xr, training=training)
+        # Pass generated output through the discriminator model (with gradient stopping) to obtain features and outputs
+        ff, yf = self.discriminator_model(
+            tf.stop_gradient(xf), training=training
+        )
+
+        # Pass real and generated inputs through the segmentator model to obtain predicted masks
+        mf = self.unet_model((xr, tf.stop_gradient(xf)), training=training)
+        # Assume the segmentator model returns a tuple; extract the first element as the predicted mask
+        mf = mf[0]
+
+        return xn, xr, zr, xf, zf, fr, yr, ff, yf, mf
+
+    def losses_step(
+        self,
+        xn: tf.Tensor,
+        xr: tf.Tensor,
+        zr: tf.Tensor,
+        xf: tf.Tensor,
+        zf: tf.Tensor,
+        fr: tf.Tensor,
+        yr: tf.Tensor,
+        ff: tf.Tensor,
+        yf: tf.Tensor,
+        mr: tf.Tensor,
+        mf: tf.Tensor,
+        n: tf.Tensor,
+        r: tf.Tensor,
+        beta: tf.Tensor,
+    ) -> Tuple[
+        tf.Tensor,
+        tf.Tensor,
+        tf.Tensor,
+        tf.Tensor,
+        tf.Tensor,
+        tf.Tensor,
+        tf.Tensor,
+    ]:
+        """
+        Computes the losses for the generator, discriminator, and segmentator models.
+
+        Parameters:
+            xn (tf.Tensor): Noisy input tensor.
+            xr (tf.Tensor): Real input tensor.
+            zr (tf.Tensor): Latent representation from the generator for xn.
+            xf (tf.Tensor): Generated output from the generator model.
+            zf (tf.Tensor): Latent representation from the generator for xf.
+            fr (tf.Tensor): Features from the discriminator model for xr.
+            yr (tf.Tensor): Output from the discriminator model for xr.
+            ff (tf.Tensor): Features from the discriminator model for xf.
+            yf (tf.Tensor): Output from the discriminator model for xf.
+            mr (tf.Tensor): Ground truth mask tensor.
+            mf (tf.Tensor): Predicted mask tensor from the segmentator model.
+            n (tf.Tensor): Noise tensor.
+            r (tf.Tensor): Additional tensor used in segmentator loss.
+            beta (tf.Tensor): Weighting factor for the noise loss.
+
+        Returns:
+            Tuple[tf.Tensor, ...]: A tuple containing the following losses:
+                contextual_loss (tf.Tensor): Contextual loss between xr and xf.
+                adversarial_loss (tf.Tensor): Adversarial loss between fr and ff.
+                latent_loss (tf.Tensor): Latent loss between zr and zf.
+                noise_loss (tf.Tensor): Noise loss.
+                generator_loss (tf.Tensor): Total generator loss.
+                discriminator_loss (tf.Tensor): Discriminator loss.
+                segmentator_loss (tf.Tensor): Segmentator loss.
+        """
+        # Compute contextual loss between real and generated images
+        contextual_loss = self.contextual_loss(xr, xf)
+
+        # Compute adversarial loss between discriminator outputs for real and fake images
+        adversarial_loss = self.adversarial_loss(fr, ff)
+
+        # Compute latent loss between latent representations of noisy and generated images
+        latent_loss = self.latent_loss(zr, zf)
+
+        # Compute noise loss based on the difference between noisy images and the real images adjusted by beta
+        noise_loss = tf.reduce_mean(
+            (((xn * mr) - ((xr * mr) * (1 - beta))) - (n * beta)) ** 2.0
+        )
+
+        # Sum up individual losses to obtain the total generator loss
+        generator_loss = tf.add_n(
+            [adversarial_loss, contextual_loss, latent_loss, noise_loss]
+        )
+
+        # Compute discriminator loss based on outputs for real and fake images
+        discriminator_loss = self.discriminator_loss(yr, yf)
+
+        # Compute segmentator loss using ground truth and predicted masks
+        segmentator_loss = self.segmentator_loss(mr, mf, r)
+
+        return (
+            contextual_loss,
+            adversarial_loss,
+            latent_loss,
+            noise_loss,
+            generator_loss,
+            discriminator_loss,
+            segmentator_loss,
+        )
+
+    @tf.function(
+        autograph=True, reduce_retracing=True, jit_compile=True
+    )
+    def train_step(
+        self,
+        inputs: Tuple[
+            tf.Tensor, tf.Tensor, tf.Tensor, tf.Tensor, tf.Tensor, tf.Tensor
+        ],
+    ) -> Dict[str, tf.Tensor]:
+        """
+        Performs a single training step, including forward passes, loss computation,
+        gradient calculation, and weight updates.
+
+        Parameters:
+            inputs (Tuple[tf.Tensor, ...]): A tuple containing the following tensors:
+                xr (tf.Tensor): Real input tensor.
+                xn (tf.Tensor): Noisy input tensor.
+                n (tf.Tensor): Noise tensor.
+                mr (tf.Tensor): Ground truth mask tensor.
+                r (tf.Tensor): Additional tensor used in segmentator loss.
+                beta (tf.Tensor): Weighting factor for the noise loss.
+
+        Returns:
+            Dict[str, tf.Tensor]: A dictionary containing outputs and losses:
+                'Xf' (tf.Tensor): Generated image from the generator model.
+                'Mf' (tf.Tensor): Predicted mask from the segmentator model.
+                'Zr' (tf.Tensor): Latent representation of xn.
+                'Zf' (tf.Tensor): Latent representation of xf.
+                'losses' (Dict[str, tf.Tensor]): Dictionary containing individual losses.
+        """
+        # Unpack inputs
         xr, xn, n, mr, r, beta = inputs
 
-        with tf.GradientTape() as generator_tape, tf.GradientTape() as discriminator_tape, tf.GradientTape() as segmentator_tape:
-            # Get generator output for training
-            zr, xf, zf = self.generator_model(xn, training=True)
+        # Record operations for automatic differentiation
+        with tf.GradientTape() as generator_tape, \
+             tf.GradientTape() as discriminator_tape, \
+             tf.GradientTape() as segmentator_tape:
 
-            # Get discriminator output for training
-            fr, yr = self.discriminator_model(xr, training=True)
-            ff, yf = self.discriminator_model(tf.stop_gradient(xf), training=True)
+            # Forward pass through models to obtain outputs and intermediate tensors
+            xn, xr, zr, xf, zf, fr, yr, ff, yf, mf = self.models_step(
+                xn, xr, training=True
+            )
 
-            # Get segmentator output for training
-            mf = self.unet_model((xr, tf.stop_gradient(xf)), training=True)
-            mf = mf[0]
+            # Compute losses for generator, discriminator, and segmentator
+            (
+                contextual_loss,
+                adversarial_loss,
+                latent_loss,
+                noise_loss,
+                generator_loss,
+                discriminator_loss,
+                segmentator_loss,
+            ) = self.losses_step(
+                xn, xr, zr, xf, zf, fr, yr, ff, yf, mr, mf, n, r, beta
+            )
 
-            contextual_loss = self.contextual_loss(xr, xf)
-            adversarial_loss = self.adversarial_loss(fr, ff)
-            latent_loss = self.latent_loss(zr, zf)
-            noise_loss = 1.0 * tf.math.reduce_mean((((xn * mr) - ((xr * mr) * (1 - beta))) - (n * beta)) ** 2.0)
-            generator_loss = tf.math.add_n([adversarial_loss, contextual_loss, latent_loss, noise_loss])
+        # Compute gradients for the generator model
+        generator_grads = generator_tape.gradient(
+            generator_loss, self.generator_model.trainable_weights
+        )
+        # Compute gradients for the discriminator model
+        discriminator_grads = discriminator_tape.gradient(
+            discriminator_loss, self.discriminator_model.trainable_weights
+        )
+        # Compute gradients for the segmentator model
+        segmentator_grads = segmentator_tape.gradient(
+            segmentator_loss, self.unet_model.trainable_weights
+        )
 
-            discriminator_loss = self.discriminator_loss(yr, yf)
+        # Apply gradients to update generator weights
+        self.generator_optimizer.apply_gradients(
+            zip(generator_grads, self.generator_model.trainable_weights)
+        )
+        # Apply gradients to update discriminator weights
+        self.discriminator_optimizer.apply_gradients(
+            zip(discriminator_grads, self.discriminator_model.trainable_weights)
+        )
+        # Apply gradients to update segmentator weights
+        self.segmentator_optimizer.apply_gradients(
+            zip(segmentator_grads, self.unet_model.trainable_weights)
+        )
 
-            segmentator_loss = self.segmentator_loss(mr, mf, r)
-
-        generator_grads = generator_tape.gradient(generator_loss, self.generator_model.trainable_weights)
-        discriminator_grads = discriminator_tape.gradient(discriminator_loss, self.discriminator_model.trainable_weights)
-        segmentator_grads = segmentator_tape.gradient(segmentator_loss, self.unet_model.trainable_weights)
-
-        self.generator_optimizer.apply_gradients(zip(generator_grads, self.generator_model.trainable_weights))
-        self.discriminator_optimizer.apply_gradients(zip(discriminator_grads, self.discriminator_model.trainable_weights))
-        self.segmentator_optimizer.apply_gradients(zip(segmentator_grads, self.unet_model.trainable_weights))
-
-        return {'Xf': xf,
-                'Mf': mf,
-                'Zr': zr,
-                'Zf': zf,
-                'losses' : {
-                    'contextual_loss': contextual_loss,
-                    'adversarial_loss': adversarial_loss,
-                    'latent_loss': latent_loss,
-                    'noise_loss' : noise_loss,
-                    'generator_loss': generator_loss,
-                    'discriminator_loss': discriminator_loss,
-                    'segmentator_loss': segmentator_loss
-                }
+        # Return outputs and a dictionary of the computed losses
+        return {
+            'Xf': xf,
+            'Mf': mf,
+            'Zr': zr,
+            'Zf': zf,
+            'losses': {
+                'contextual_loss': contextual_loss,
+                'adversarial_loss': adversarial_loss,
+                'latent_loss': latent_loss,
+                'noise_loss': noise_loss,
+                'generator_loss': generator_loss,
+                'discriminator_loss': discriminator_loss,
+                'segmentator_loss': segmentator_loss,
+            },
         }
 
 
@@ -428,13 +623,14 @@ class Trainer:
                 mf_min = tf.reduce_min(mf)
                 mfn = ((mf - mf_min) / (mf_max - mf_min))
 
-                assert image.shape[0] == xn.shape[0], 'Shape mismatch'
-                assert image.shape[0] == n.shape[0], 'Shape mismatch'
-                assert image.shape[0] == m.shape[0], 'Shape mismatch'
-                assert image.shape[0] == roi.shape[0], 'Shape mismatch'
-                assert image.shape[0] == beta.shape[0], 'Shape mismatch'
-                assert image.shape[0] == xf.shape[0], 'Shape mismatch'
-                assert image.shape[0] == mf.shape[0], 'Shape mismatch'
+                ERROR_STRING: str = 'Shape mismatch'
+                assert image.shape[0] == xn.shape[0], ERROR_STRING
+                assert image.shape[0] == n.shape[0], ERROR_STRING
+                assert image.shape[0] == m.shape[0], ERROR_STRING
+                assert image.shape[0] == roi.shape[0], ERROR_STRING
+                assert image.shape[0] == beta.shape[0], ERROR_STRING
+                assert image.shape[0] == xf.shape[0], ERROR_STRING
+                assert image.shape[0] == mf.shape[0], ERROR_STRING
                 
                 if self.epochs > 4 and self.cumulative_train_step % 1000 == 0:
                     to_concat = (image, xn, n, m, roi, xf, mf, mfp, mfn)
