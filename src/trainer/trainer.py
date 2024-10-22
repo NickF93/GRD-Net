@@ -235,7 +235,7 @@ class Trainer:
         self.discriminator_model: tf.keras.models.Model = None
         self.unet_model: tf.keras.models.Model = None
 
-        self.encoder_model, self.autencoder_model, self.generator_model = build_res_ae(img_height = self.patch_size[0], img_width = self.patch_size[1], channels = self.channels, bottleneck_type = BottleNeckType.CONVOLUTIONAL, initial_padding=10, initial_padding_filters=32, latent_size=latent_size)
+        self.encoder_model, self.autencoder_model, self.generator_model = build_res_ae(img_height = self.patch_size[0], img_width = self.patch_size[1], channels = self.channels, init_filters = 32, bottleneck_type = BottleNeckType.CONVOLUTIONAL, initial_padding=10, initial_padding_filters=32, latent_size=latent_size)
         logger.debug('Encoder structure:')
         model_logger(model=self.encoder_model, logger=logger, save_path=tempfile.gettempdir(), print_visualkeras=False)
         logger.debug('Autoencoder structure:')
@@ -243,11 +243,11 @@ class Trainer:
         logger.debug('Generator structure:')
         model_logger(model=self.generator_model, logger=logger, save_path=tempfile.gettempdir(), print_visualkeras=False)
 
-        self.discriminator_model = build_res_disc(img_height = self.patch_size[0], img_width = self.patch_size[1], channels = self.channels, initial_padding=10, initial_padding_filters=32)
+        self.discriminator_model = build_res_disc(img_height = self.patch_size[0], img_width = self.patch_size[1], channels = self.channels, init_filters = 32, initial_padding=10, initial_padding_filters=32)
         logger.debug('Discriminator structure:')
         model_logger(model=self.discriminator_model, logger=logger, save_path=tempfile.gettempdir(), print_visualkeras=False)
 
-        self.unet_model = build_res_unet(img_height = self.patch_size[0], img_width = self.patch_size[1], channels = self.channels, skips=4, initial_padding=10, initial_padding_filters=32)
+        self.unet_model = build_res_unet(img_height = self.patch_size[0], img_width = self.patch_size[1], channels = self.channels, skips=4, init_filters = 32, initial_padding=10, initial_padding_filters=32)
         logger.debug('U-Net structure:')
         model_logger(model=self.unet_model, logger=logger, save_path=tempfile.gettempdir(), print_visualkeras=False)
         
