@@ -61,25 +61,6 @@ def _attention_res_block(
     )
     x = mhatt((x, x, x))
     x = x + x_skip
-    x_skip = x
-    x = tf.keras.layers.Conv2D(
-            filters=128, 
-            kernel_size=(1, 1), 
-            strides=1, 
-            padding='same', 
-            use_bias=use_bias, 
-            name=f'conv_trans_0_{name}'
-    )(x)
-    x = tf.keras.layers.Activation('gelu')(x)
-    x = tf.keras.layers.Conv2D(
-            filters=64, 
-            kernel_size=(1, 1), 
-            strides=1, 
-            padding='same', 
-            use_bias=use_bias, 
-            name=f'conv_trans_1_{name}'
-    )(x)
-    x = x + x_skip
     x = tf.keras.layers.LeakyReLU(alpha=0.2, name=f'attention_att_{name}')(x)
     return x
 
