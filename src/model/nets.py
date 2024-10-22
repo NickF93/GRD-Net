@@ -150,7 +150,7 @@ def build_res_ae(
     x = _attention_res_block(x=x, use_bias=use_bias, name=name)
 
     # Create an instance of the ResnetAE class
-    rae_obj = ResnetAE(init_features=init_filters, channels=channels, name=f'rae_{name}', net_shape=(2, 2, 2, 2, 2))
+    rae_obj = ResnetAE(init_features=init_filters, channels=channels, name=f'rae_{name}', net_shape=(2, 2, 2, 2))
 
     # Generate the encoder model and retrieve its output
     _, enc_out, _ = rae_obj.gen_encoder(inputs=x, name='encoder', wide=wide)
@@ -269,7 +269,7 @@ def build_res_disc(
         x = tf.keras.layers.LeakyReLU(alpha=0.2, name=f'pre_pad_act_{name}')(x)
 
     # Create an instance of the ResnetAE class
-    rae_obj = ResnetAE(init_features=init_filters, channels=channels, name=f'rae_{name}', net_shape=(2, 2, 2, 2, 2))
+    rae_obj = ResnetAE(init_features=init_filters, channels=channels, name=f'rae_{name}', net_shape=(2, 2, 2, 2))
 
     # Generate the encoder model and retrieve its output
     _, enc_out, _ = rae_obj.gen_encoder(inputs=x, name='encoder', wide=wide)
@@ -393,7 +393,7 @@ def build_res_unet(
 
     if residual:
         # Create an instance of the ResnetAE class
-        rae_obj = ResnetAE(init_features=init_filters, channels=channels, name=f'rae_{name}', net_shape=(2, 2, 2, 2, 2), bias=use_bias)
+        rae_obj = ResnetAE(init_features=init_filters, channels=channels, name=f'rae_{name}', net_shape=(2, 2, 2, 2), bias=use_bias)
 
         # Generate the encoder model and retrieve its output
         _, enc_out, skips = rae_obj.gen_encoder(inputs=x, name='encoder', wide=wide)
