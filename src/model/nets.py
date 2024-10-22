@@ -63,7 +63,7 @@ def _attention_res_block(
     x = x + x_skip
     x_skip = x
     x = tf.keras.layers.Conv2D(
-            filters=256, 
+            filters=128, 
             kernel_size=(1, 1), 
             strides=1, 
             padding='same', 
@@ -72,7 +72,7 @@ def _attention_res_block(
     )(x)
     x = tf.keras.layers.Activation('gelu')(x)
     x = tf.keras.layers.Conv2D(
-            filters=128, 
+            filters=64, 
             kernel_size=(1, 1), 
             strides=1, 
             padding='same', 
