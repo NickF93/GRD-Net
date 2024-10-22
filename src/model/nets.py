@@ -30,7 +30,7 @@ def _attention_res_block(
 ) -> tf.Tensor:
     x_skip = x
     x_skip = tf.keras.layers.Conv2D(
-            filters=64, 
+            filters=32, 
             kernel_size=(1, 1), 
             strides=(1, 1), 
             padding='same', 
@@ -43,7 +43,7 @@ def _attention_res_block(
         height=int(x.shape[1]),
         width=int(x.shape[2]),
         channels=int(x.shape[3]),
-        embed_channels=64,
+        embed_channels=32,
         num_heads=2,
         projections_kernel=(3, 3),
         projections_strides=(1, 1),
