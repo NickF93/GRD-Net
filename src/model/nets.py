@@ -287,8 +287,6 @@ def build_res_disc(
         )(x)
         x = tf.keras.layers.LeakyReLU(alpha=0.2, name=f'pre_pad_act_{name}')(x)
 
-    x = _attention_res_block(x=x, use_bias=use_bias, name=name)
-
     # Create an instance of the ResnetAE class
     rae_obj = ResnetAE(init_features=init_filters, channels=channels, name=f'rae_{name}', net_shape=(2, 2, 2, 2, 2))
 
