@@ -47,7 +47,7 @@ def _attention_res_block(
         num_heads=2,
         projections_kernel=(3, 3),
         projections_strides=(2, 2),
-        projections_dilation_rate=(2, 2),
+        projections_dilation_rate=(1, 1),
         projections_padding='same',
         projections_use_bias=use_bias,
         projections_activation=None,
