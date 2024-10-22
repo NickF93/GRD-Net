@@ -32,7 +32,7 @@ def _attention_res_block(
     x_skip = tf.keras.layers.Conv2D(
             filters=64, 
             kernel_size=(1, 1), 
-            strides=(2, 2), 
+            strides=(1, 1), 
             padding='same', 
             use_bias=use_bias, 
             name=f'skip_attention_conv_{name}'
@@ -46,8 +46,8 @@ def _attention_res_block(
         embed_channels=64,
         num_heads=2,
         projections_kernel=(3, 3),
-        projections_strides=(2, 2),
-        projections_dilation_rate=(1, 1),
+        projections_strides=(1, 1),
+        projections_dilation_rate=(2, 2),
         projections_padding='same',
         projections_use_bias=use_bias,
         projections_activation=None,
