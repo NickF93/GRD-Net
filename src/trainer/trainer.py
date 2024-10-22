@@ -247,7 +247,7 @@ class Trainer:
         logger.debug('Discriminator structure:')
         model_logger(model=self.discriminator_model, logger=logger, save_path=tempfile.gettempdir(), print_visualkeras=False)
 
-        self.unet_model = build_res_unet(img_height = self.patch_size[0], img_width = self.patch_size[1], channels = self.channels, skips=4, init_filters = 32, initial_padding=-1, initial_padding_filters=-1)
+        self.unet_model = build_res_unet(img_height = self.patch_size[0], img_width = self.patch_size[1], channels = self.channels, skips=4, init_filters = 32, initial_padding=2, initial_padding_filters=16)
         logger.debug('U-Net structure:')
         model_logger(model=self.unet_model, logger=logger, save_path=tempfile.gettempdir(), print_visualkeras=False)
         
