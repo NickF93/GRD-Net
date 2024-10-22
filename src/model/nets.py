@@ -389,7 +389,7 @@ def build_res_unet(
         skips = tmp_skips
         
         _, decoder0_residual_output = rae_obj.gen_decoder(inputs=x, last_act=last_act, name='decoder0', wide=wide, skips=skips, override_channels=1)
-        decoder0_residual_output = tf.keras.layers.Conv2DTranspose(filters=1, kernel_size=int(32), strides=2, padding='valid', use_bias=use_bias)(decoder0_residual_output)
+        decoder0_residual_output = tf.keras.layers.Conv2DTranspose(filters=1, kernel_size=int(32), strides=2, padding='same', use_bias=use_bias)(decoder0_residual_output)
         decoder0_residual_output = tf.keras.layers.LeakyReLU(alpha=0.2)(decoder0_residual_output)
             
         # If initial padding was applied, remove it from the final output
