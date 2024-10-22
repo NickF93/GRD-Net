@@ -28,7 +28,7 @@ def _attention_res_block(
         height=int(x.shape[1]),
         width=int(x.shape[2]),
         channels=int(x.shape[3]),
-        embed_channels=32,
+        embed_channels=64,
         num_heads=4,
         projections_kernel=(3, 3),
         projections_strides=(2, 2),
@@ -48,7 +48,7 @@ def _attention_res_block(
     x = x + x_skip
     x_skip = x
     x = tf.keras.layers.Conv2D(
-            filters=64, 
+            filters=128, 
             kernel_size=(1, 1), 
             strides=1, 
             padding='same', 
@@ -57,7 +57,7 @@ def _attention_res_block(
     )(x)
     x = tf.keras.layers.Activation('gelu')(x)
     x = tf.keras.layers.Conv2D(
-            filters=32, 
+            filters=64, 
             kernel_size=(1, 1), 
             strides=1, 
             padding='same', 
