@@ -12,7 +12,6 @@ from enum import Enum
 import tensorflow as tf
 from ._ae import ResnetAE
 from ._unet import UNet
-from ..conv_mha import ConvMultiHeadAttention
 
 class BottleNeckType(Enum):
     """
@@ -22,67 +21,6 @@ class BottleNeckType(Enum):
     """
     DENSE = 0
     CONVOLUTIONAL = 1
-
-def _attention_res_block(
-        x: tf.Tensor,
-        use_bias: bool,
-        name: str
-) -> tf.Tensor:
-    x_skip = x
-    x_skip = tf.keras.layers.Conv2D(
-            filters=128, 
-            kernel_size=(1, 1), 
-            strides=1, 
-            padding='same', 
-            use_bias=use_bias, 
-            name=f'skip_attention_conv_{name}'
-    )(x_skip)
-
-    # Conv Attention
-    mhatt = ConvMultiHeadAttention(
-        height=int(x.shape[1]),
-        width=int(x.shape[2]),
-        channels=int(x.shape[3]),
-        embed_channels=128,
-        num_heads=4,
-        projections_kernel=(3, 3),
-        projections_strides=(1, 1),
-        projections_dilation_rate=(2, 2),
-        projections_padding='same',
-        projections_use_bias=use_bias,
-        projections_activation=None,
-        last_kernel=(1, 1),
-        last_strides=(1, 1),
-        last_dilation_rate=(1, 1),
-        last_padding='same',
-        last_use_bias=use_bias,
-        last_activation=None,
-        last_dropout=None
-    )
-    x = mhatt((x, x, x))
-    x = x + x_skip
-    x_skip = x
-    x = tf.keras.layers.Conv2D(
-            filters=512, 
-            kernel_size=(1, 1), 
-            strides=1, 
-            padding='same', 
-            use_bias=use_bias, 
-            name=f'conv_trans_0_{name}'
-    )(x)
-    x = tf.keras.layers.Activation('gelu')(x)
-    x = tf.keras.layers.Conv2D(
-            filters=128, 
-            kernel_size=(1, 1), 
-            strides=1, 
-            padding='same', 
-            use_bias=use_bias, 
-            name=f'conv_trans_1_{name}'
-    )(x)
-    x = x + x_skip
-    x = tf.keras.layers.LeakyReLU(alpha=0.2, name=f'attention_att_{name}')(x)
-    return x
-
 
 def build_res_ae(
         img_height: int = 224,
@@ -165,8 +103,6 @@ def build_res_ae(
             name=f'pre_pad_conv_{name}'
         )(x)
         x = tf.keras.layers.LeakyReLU(alpha=0.2, name=f'pre_pad_act_{name}')(x)
-
-    x = _attention_res_block(x=x, use_bias=use_bias, name=name)
 
     # Create an instance of the ResnetAE class
     rae_obj = ResnetAE(init_features=init_filters, channels=channels, name=f'rae_{name}', net_shape=(2, 2, 2, 2, 2))
@@ -408,14 +344,12 @@ def build_res_unet(
 
     x = tf.keras.layers.Concatenate(axis=-1, name=f'concat_inputs_{name}')([xo, xf])
 
-    x = _attention_res_block(x=x, use_bias=use_bias, name=name)
-
     if residual:
         # Create an instance of the ResnetAE class
         rae_obj = ResnetAE(init_features=init_filters, channels=channels, name=f'rae_{name}', net_shape=(2, 2, 2, 2, 2), bias=use_bias)
 
         # Generate the encoder model and retrieve its output
-        _, enc_out, skips = rae_obj.gen_encoder(inputs=x, name='encoder', wide=wide)
+        _, enc_out, skips = rae_obj.gen_encoder(inputs=x, name='encoder', wide=wide, attention=True)
 
         x = enc_out
 

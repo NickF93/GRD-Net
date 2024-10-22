@@ -12,6 +12,69 @@ the option to use a wide residual network.
 from typing import Optional, Tuple, Union, List
 import tensorflow as tf
 
+from ..conv_mha import ConvMultiHeadAttention
+
+
+def _attention_res_block(
+        x: tf.Tensor,
+        use_bias: bool,
+        name: str
+) -> tf.Tensor:
+    x_skip = x
+    x_skip = tf.keras.layers.Conv2D(
+            filters=32, 
+            kernel_size=(1, 1), 
+            strides=1, 
+            padding='same', 
+            use_bias=use_bias, 
+            name=f'skip_attention_conv_{name}'
+    )(x_skip)
+
+    # Conv Attention
+    mhatt = ConvMultiHeadAttention(
+        height=int(x.shape[1]),
+        width=int(x.shape[2]),
+        channels=int(x.shape[3]),
+        embed_channels=32,
+        num_heads=4,
+        projections_kernel=(3, 3),
+        projections_strides=(1, 1),
+        projections_dilation_rate=(2, 2),
+        projections_padding='same',
+        projections_use_bias=use_bias,
+        projections_activation=None,
+        last_kernel=(1, 1),
+        last_strides=(1, 1),
+        last_dilation_rate=(1, 1),
+        last_padding='same',
+        last_use_bias=use_bias,
+        last_activation=None,
+        last_dropout=None
+    )
+    x = mhatt((x, x, x))
+    x = x + x_skip
+    x_skip = x
+    x = tf.keras.layers.Conv2D(
+            filters=64, 
+            kernel_size=(1, 1), 
+            strides=1, 
+            padding='same', 
+            use_bias=use_bias, 
+            name=f'conv_trans_0_{name}'
+    )(x)
+    x = tf.keras.layers.Activation('gelu')(x)
+    x = tf.keras.layers.Conv2D(
+            filters=32, 
+            kernel_size=(1, 1), 
+            strides=1, 
+            padding='same', 
+            use_bias=use_bias, 
+            name=f'conv_trans_1_{name}'
+    )(x)
+    x = x + x_skip
+    x = tf.keras.layers.LeakyReLU(alpha=0.2, name=f'attention_att_{name}')(x)
+    return x
+
 
 class ResnetAE:
     """
@@ -317,7 +380,8 @@ class ResnetAE:
         self,
         inputs: tf.Tensor,
         name: Union[str, int],
-        wide: int = 1
+        wide: int = 1,
+        attention: bool = False
     ) -> Tuple[tf.keras.models.Model, tf.Tensor, tf.Tensor]:
         """
         Generates the encoder part of the ResNet-based autoencoder.
@@ -360,6 +424,8 @@ class ResnetAE:
 
         # Apply the encoder activation function
         x = self._get_act(act=self._enc_act, name=name + '_in_act_' + self._enc_act + '0')(x)
+
+        x = _attention_res_block(x, use_bias=False, name=name)
 
         # Loop over stages and blocks in the network
         for stage, blocks in enumerate(self._net_shape):
