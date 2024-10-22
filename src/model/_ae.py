@@ -21,14 +21,7 @@ def _attention_res_block(
         name: str
 ) -> tf.Tensor:
     x_skip = x
-    x_skip = tf.keras.layers.Conv2D(
-            filters=32, 
-            kernel_size=(1, 1), 
-            strides=1, 
-            padding='same', 
-            use_bias=use_bias, 
-            name=f'skip_attention_conv_{name}'
-    )(x_skip)
+    x_skip = tf.keras.layers.MaxPool2D((2, 2))(x_skip)
 
     # Conv Attention
     mhatt = ConvMultiHeadAttention(
@@ -38,8 +31,8 @@ def _attention_res_block(
         embed_channels=32,
         num_heads=4,
         projections_kernel=(3, 3),
-        projections_strides=(1, 1),
-        projections_dilation_rate=(2, 2),
+        projections_strides=(2, 2),
+        projections_dilation_rate=(1, 1),
         projections_padding='same',
         projections_use_bias=use_bias,
         projections_activation=None,
