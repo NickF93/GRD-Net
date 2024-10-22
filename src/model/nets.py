@@ -286,7 +286,7 @@ def build_res_disc(
 def build_res_unet(
         img_height: int = 224,
         img_width: Optional[int] = None,
-        channels: int = 3,
+        channels: int = 6,
         init_filters: int = 64,
         latent_size: int = 128,
         skips: int = 4,
