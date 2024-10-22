@@ -425,7 +425,8 @@ class ResnetAE:
         # Apply the encoder activation function
         x = self._get_act(act=self._enc_act, name=name + '_in_act_' + self._enc_act + '0')(x)
 
-        x = _attention_res_block(x, use_bias=False, name=name)
+        if attention:
+            x = _attention_res_block(x, use_bias=False, name=name)
 
         # Loop over stages and blocks in the network
         for stage, blocks in enumerate(self._net_shape):

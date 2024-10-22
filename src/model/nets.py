@@ -341,6 +341,9 @@ def build_res_unet(
             name=f'pre_pad_conv_{name}_f'
         )(xf)
         xf = tf.keras.layers.LeakyReLU(alpha=0.2, name=f'pre_pad_act_{name}_f')(xf)
+    else:
+        xo = tf.keras.layers.Identity(name=f'id_{name}_o')(xo)
+        xf = tf.keras.layers.Identity(name=f'id_{name}_f')(xf)
 
     x = tf.keras.layers.Concatenate(axis=-1, name=f'concat_inputs_{name}')([xo, xf])
 
