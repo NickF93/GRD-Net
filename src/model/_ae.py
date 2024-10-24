@@ -44,7 +44,15 @@ def _attention_res_block(
         last_activation=None,
         last_dropout=None
     )
-    x = mhatt((x, x, x))
+    #x = mhatt((x, x, x))
+    x = tf.keras.layers.Conv2D(
+            filters=64, 
+            kernel_size=(3, 3), 
+            strides=2, 
+            padding='same', 
+            use_bias=use_bias, 
+            name=f'conv_att_sost_{name}'
+    )(x)
     x = x + x_skip
     x_skip = x
     x = tf.keras.layers.Conv2D(
