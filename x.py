@@ -8,20 +8,26 @@ util.config_gpu()
 
 trainer = train.Trainer(name='test',
               net_type=train.NetType.GRD,
-              batch_size=2,
+              batch_size=8,
+              latent_size=128,
               channels=3,
               epochs=1000,
-              train_and_validation_path='/ArchiveEXT4/BONFI/hazelnut_2label/train',
-              train_and_validation_roi_path='/ArchiveEXT4/BONFI/hazelnut_2label/ROI',
+              train_and_validation_path='/mnt/hdd/mvtec_anomaly_detection/hazelnut_2label/train',
+              train_and_validation_roi_path='/mnt/hdd/mvtec_anomaly_detection/hazelnut_2label/ROI',
               validation_split=0.1,
-              test_path='/ArchiveEXT4/BONFI/hazelnut_2label/test',
-              mask_path='/ArchiveEXT4/BONFI/hazelnut_2label/MASK',
-              patch_size=[64, 64],
+              test_path='/mnt/hdd/mvtec_anomaly_detection/hazelnut_2label/test',
+              mask_path='/mnt/hdd/mvtec_anomaly_detection/hazelnut_2label/MASK',
+              patch_size=[128, 128],
               patches_row=1,
               patches_col=1,
-              stride=[64, 64],
+              stride=[128, 128],
               padding='VALID',
-              mask_suffix='mask')
+              mask_suffix='mask',
+              initial_learning_rate=1e-4,
+              first_decay_steps=2500,
+              t_mul=2.0,
+              m_mul=(1.0 / 2.0),
+              alpha=(1.0 / 25.0))
 trainer.train()
 
 trainer.show_first_batch_images_and_masks(True, False)
