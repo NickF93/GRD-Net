@@ -4,6 +4,7 @@ from typing import Tuple, Optional, Union, List, Callable, Dict
 from enum import Enum
 import tempfile
 import logging
+import gc
 
 import tensorflow as tf
 import numpy as np
@@ -46,6 +47,8 @@ logger.info('GPU configured for TensorFlow memory growth')
 class NetType(Enum):
     GRD = 0
     ResGAN = 1
+
+LOSSES_KEY = 'losses'
 
 class Trainer:
     def __init__(self,
@@ -534,7 +537,7 @@ class Trainer:
             'Mf': mf,
             'Zr': zr,
             'Zf': zf,
-            'losses': {
+            LOSSES_KEY: {
                 'contextual_loss': contextual_loss,
                 'adversarial_loss': adversarial_loss,
                 'latent_loss': latent_loss,
@@ -584,7 +587,7 @@ class Trainer:
     def train_loop(self, epoch: int, emanager: Optional[ExperimentManager] = None):
         cumulative_loss_dict = {}
 
-        with tqdm(iterable=self.ds_training_path, leave=True, desc='Train', unit='batch') as pbar:
+        with tqdm(iterable=self.ds_training_path, leave=True, desc=f'Train {epoch + 1}', unit='batch') as pbar:
             for idx, inputs in enumerate(pbar):
                 image, roi = self.augment_inputs(inputs)
                 image_gaussian = self.superimpose_gaussian_noise(image, 0.01)
@@ -625,11 +628,53 @@ class Trainer:
                 roi = tf.reshape(roi, shape=(-1, *roi.shape[-3:]))
                 beta = tf.reshape(beta, shape=(-1, *beta.shape[-3:]))
 
-                inputs = (image, xn, n, m, roi, beta)
-                loss_dict = self.train_step(inputs)
+                assert len(image) == len(xn), 'Input length mismatch (image != xn)'
+                assert len(image) == len(n), 'Input length mismatch (image != n)'
+                assert len(image) == len(m), 'Input length mismatch (image != m)'
+                assert len(image) == len(roi), 'Input length mismatch (image != roi)'
+                assert len(image) == len(beta), 'Input length mismatch (image != beta)'
+
+                batch_len = len(image)
+                k = 0
+                loss_dict: Dict[str, Union[tf.Tensor, Dict[str, tf.Tensor]]] = {}
+                while k * self.batch_size < batch_len:
+                    b_start = k * self.batch_size
+                    b_end = min((k + 1) * self.batch_size, batch_len)
+                    effective_batch_size = (b_end - b_start)
+
+                    b_image = image[b_start : b_end]
+                    b_xn = xn[b_start : b_end]
+                    b_n = n[b_start : b_end]
+                    b_m = m[b_start : b_end]
+                    b_roi = roi[b_start : b_end]
+                    b_beta = beta[b_start : b_end]
+
+                    inputs = (b_image, b_xn, b_n, b_m, b_roi, b_beta)
+                    b_loss_dict: Dict[str, Union[tf.Tensor, Dict[str, tf.Tensor]]] = self.train_step(inputs)
+
+                    for key, value in b_loss_dict.items():
+                        if key == LOSSES_KEY:
+                            assert isinstance(value, dict)
+                            if key not in loss_dict:
+                                loss_dict[key] = {}
+                            for lkey, lvalue in value.items():
+                                if lkey not in loss_dict[key]:
+                                    loss_dict[key][lkey] = tf.cast(0., tf.float32)
+                                loss_dict[key][lkey] += lvalue * tf.cast(effective_batch_size, tf.float32)
+                        else:
+                            if key in loss_dict:
+                                loss_dict[key] = tf.concat([loss_dict[key], value], axis=0)
+                            else:
+                                loss_dict[key] = value
+
+                    k += 1
+                
+                for key, value in loss_dict[LOSSES_KEY].items():
+                    loss_dict[LOSSES_KEY][key] /= tf.cast(batch_len, tf.float32)
+
                 xf = loss_dict['Xf']
                 mf = loss_dict['Mf']
-                mfp = tf.nn.avg_pool2d(input=mf, ksize=3, strides=1, padding='SAME')
+                mfp = tf.nn.avg_pool2d(input=mf, ksize=5, strides=1, padding='SAME')
                 mf_max = tf.reduce_max(mf)
                 mf_min = tf.reduce_min(mf)
                 mfn = ((mf - mf_min) / (mf_max - mf_min))
@@ -674,12 +719,9 @@ class Trainer:
                 self.cumulative_train_step += 1
                 pbar.set_postfix(averaged_loss_str_dict)
 
-
-                #self.log_inputs((image, roi))
-                #logger.debug('%s', str(tuple(tf.reshape(beta, (-1)).numpy())))
-                #self.log_inputs((xn, m))
-                #self.log_inputs((xa, n))
-                #logger.debug('END')
+                # Cleanup
+                del xf, mf, mfp, mf_max, mf_min, mfn
+                gc.collect()
 
 
     def train(self):
