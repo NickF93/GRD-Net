@@ -114,7 +114,7 @@ def build_res_ae(
 
     # If using a dense bottleneck, flatten the output
     if bottleneck_type == BottleNeckType.DENSE:
-        bf_shape = x.get_shape()[1:]
+        bf_shape = x.shape[1:]
         x = tf.keras.layers.Flatten(name='encoder0_bottleneck_flat')(x)
 
     # Encoder bottleneck
@@ -122,13 +122,13 @@ def build_res_ae(
         x = tf.keras.layers.Dense(latent_size, name=f'encoder0_dense_bottleneck_nz{latent_size}')(x)
     else:
         x = tf.keras.layers.Conv2D(latent_size, 4, strides=1, use_bias=use_bias, padding='valid', name=f'encoder0_conv_bottleneck_nz{latent_size}')(x)
-        bf_shape = x.get_shape()[1:]
+        bf_shape = x.shape[1:]
         x = tf.keras.layers.Flatten(name='encoder0_bottleneck_flat')(x)
 
     latent_space = x
 
     # Create the encoder model
-    encoder_model = tf.keras.models.Model(inputs=(inputs,), outputs=(latent_space,), name=f'encder_model_{name}')
+    encoder_model = tf.keras.models.Model(inputs=inputs, outputs=latent_space, name=f'encder_model_{name}')
 
     # Decoder bottleneck
     decoder0_input = x
@@ -164,7 +164,7 @@ def build_res_ae(
         outputs = decoder0_residual_output
 
     # Create the full autoencoder model
-    autencoder_model = tf.keras.models.Model(inputs=(inputs,), outputs=(outputs, latent_space), name=f'autoencoder_{name}')
+    autencoder_model = tf.keras.models.Model(inputs=inputs, outputs=(outputs, latent_space), name=f'autoencoder_{name}')
 
     # Create the generator model by chaining the encoder and autoencoder models
     generator_input = tf.keras.layers.Input(shape=image_shape)
@@ -172,7 +172,7 @@ def build_res_ae(
     generator_output = encoder_model(autoencoder_output)
     if isinstance(generator_output, (tuple, list)):
         generator_output = generator_output[0]
-    generator_model = tf.keras.models.Model(inputs=(generator_input,), outputs=(generator_output, autoencoder_output, latent_space))
+    generator_model = tf.keras.models.Model(inputs=generator_input, outputs=(generator_output, autoencoder_output, latent_space))
 
     return encoder_model, autencoder_model, generator_model
 
@@ -235,7 +235,7 @@ def build_res_disc(
     x = tf.keras.layers.Dropout(0.10)(x)
     x = tf.keras.layers.Dense(1, activation='sigmoid')(x)
 
-    discriminator_model = tf.keras.models.Model(inputs=(inputs,), outputs=(enc_out, x), name=f'discriminator_{name}')
+    discriminator_model = tf.keras.models.Model(inputs=inputs, outputs=(enc_out, x), name=f'discriminator_{name}')
     return discriminator_model
 
 def build_res_unet(
@@ -354,7 +354,7 @@ def build_res_unet(
         x = enc_out
 
         x = tf.keras.layers.Conv2D(latent_size, 4, strides=1, use_bias=use_bias, padding='valid', name=f'encoder0_conv_bottleneck_nz{latent_size}')(x)
-        bf_shape = x.get_shape()[1:]
+        bf_shape = x.shape[1:]
         x = tf.keras.layers.Flatten(name='encoder0_bottleneck_flat')(x)
 
         # Decoder bottleneck
@@ -376,7 +376,7 @@ def build_res_unet(
         for i, s in enumerate(skips):
             _, _, _, c = tf.keras.backend.int_shape(s)
             s = tf.keras.layers.Conv2D(c // 4, 4, strides=1, use_bias=use_bias, padding='valid', name=f'encoder0_conv_bottleneck_nz{latent_size}_{i}')(s)
-            bf_shape_s = s.get_shape()[1:]
+            bf_shape_s = s.shape[1:]
             s = tf.keras.layers.Flatten(name=f'encoder0_bottleneck_flat_{i}')(s)
 
             # Reshape if the bottleneck is convolutional
@@ -402,6 +402,6 @@ def build_res_unet(
         _, outputs = unet.generate_ds_decoder(den0_outputs)
 
     # Create the full unet model
-    unet_model = tf.keras.models.Model(inputs=(inputs,), outputs=(outputs,), name=f'unet_{name}')
+    unet_model = tf.keras.models.Model(inputs=inputs, outputs=outputs, name=f'unet_{name}')
 
     return unet_model
