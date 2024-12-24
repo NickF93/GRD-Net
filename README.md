@@ -6,3 +6,5 @@ WORK-IN-PROGRESS: GRD-Net official implementation
 - [ ] Add sub-batching with accumulation
 - [ ] Add patching
 - [ ] Add ResGAN training flow
+
+**For the moment refer to [https://github.com/NickF93/Simple-GRD-Net](Simple GRD-Net)**
