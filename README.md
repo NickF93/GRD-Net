@@ -7,4 +7,4 @@ WORK-IN-PROGRESS: GRD-Net official implementation
 - [ ] Add patching
 - [ ] Add ResGAN training flow
 
-**For the moment refer to [https://github.com/NickF93/Simple-GRD-Net](Simple GRD-Net)**
+**For the moment refer to [Simple GRD-Net](https://github.com/NickF93/Simple-GRD-Net)**
