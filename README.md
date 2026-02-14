@@ -1,4 +1,4 @@
-# Simple-GRD-Net
+# GRD-Net
 
 Official configurable implementation of:
 
